@@ -1,18 +1,6 @@
-use std::{
-    cmp,
-    convert::TryInto,
-    fmt,
-    ops::{Deref, DerefMut},
-    result,
-    sync::Arc,
-};
+use std::{ops::Deref, sync::Arc};
 
 use mkit::{data::Diff, db};
-
-//use crate::{
-//    core::{Diff, Footprint, Result, ToJson, Value},
-//    error::Error,
-//};
 
 // Node corresponds to a single entry in Llrb instance.
 #[derive(Clone)]

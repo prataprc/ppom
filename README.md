@@ -2,8 +2,6 @@ Left Leaning Red Black Tree
 ===========================
 
 [![Rustdoc](https://img.shields.io/badge/rustdoc-hosted-blue.svg)](https://docs.rs/llrb-index)
-[![Build Status](https://travis-ci.org/bnclabs/llrb-index.svg?branch=master)](https://travis-ci.org/bnclabs/llrb-index)
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 
 This package implements LLRB, Left Leaning Red Black, tree a popular
 data structured, with following features:
@@ -20,17 +18,6 @@ data structured, with following features:
 
 Note that this implementation of LLRB do not provide
 ``durability gaurantee`` and ``not thread safe``.
-
-**Licensing**
-
-Default license for ``llrb-index`` is [AGPL-3.0 license][agpl]. For re-licensing
-this source, you can either contact the author(s) directly or post your
-request here [#1][#1].
-
-**Compatibility policy**
-
-``llrb-index`` shall officially support the latest version of rust stable
-compiler and nightly builds.
 
 **Useful links**
 
