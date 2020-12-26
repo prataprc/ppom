@@ -1,6 +1,6 @@
 //! Package implement Persistent Ordered Map.
 
-use std::result;
+use std::{error, fmt, result};
 
 // error.rs
 // lib.rs
@@ -58,13 +58,37 @@ mod arc;
 mod mem_db;
 mod node;
 
+pub use mem_db::Mdb;
+
 /// Error variants that can be returned by this package's API.
 ///
 /// Each variant carries a prefix, typically identifying the
 /// error location.
 pub enum Error {
+    Fatal(String, String),
     KeyNotFound(String, String),
+    InvalidCAS(String, String),
 }
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> result::Result<(), fmt::Error> {
+        use Error::*;
+
+        match self {
+            Fatal(p, msg) => write!(f, "{} Fatal: {}", p, msg),
+            KeyNotFound(p, msg) => write!(f, "{} KeyNotFound: {}", p, msg),
+            InvalidCAS(p, msg) => write!(f, "{} InvalidCAS: {}", p, msg),
+        }
+    }
+}
+
+impl fmt::Debug for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> result::Result<(), fmt::Error> {
+        write!(f, "{}", self)
+    }
+}
+
+impl error::Error for Error {}
 
 /// Type alias for Result return type, used by this package.
 pub type Result<T> = result::Result<T, Error>;
