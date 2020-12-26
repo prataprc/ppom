@@ -57,6 +57,7 @@ macro_rules! err_at {
 mod arc;
 mod mem_db;
 mod node;
+mod op;
 
 pub use mem_db::Mdb;
 
