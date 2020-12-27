@@ -130,61 +130,71 @@ pub struct Wr<K, V, D> {
 }
 
 impl<K, V, D> Mdb<K, V, D> {
-    //    pub fn write(&self, op: Op<K, V>) -> Result<Wr<K, V, D>> {
-    //        let _w = self.mu.lock();
-    //
-    //        let inner = Arc::clone(&self.inner.read());
-    //        let (inner, old_entry) = match op {
-    //            Op::Set { key, value, seqno } => match inner.set(key, value, Some(seqno))? {
-    //                Ir::Res { inner, node, old } => (inner, old),
-    //                _ => unreachable!(),
-    //            },
-    //            Op::Cas {
-    //                key,
-    //                value,
-    //                cas,
-    //                seqno,
-    //            } => match inner.set_cas(key, value, cas, Some(seqno))? {
-    //                Ir::Res { inner, node, old } => (inner, old),
-    //                _ => unreachable!(),
-    //            },
-    //        };
-    //
-    //        let seqno = inner.seqno;
-    //        *self.inner.write() = Arc::new(inner);
-    //
-    //        Ok(Wr { seqno, old_entry })
-    //    }
-    //
-    //    pub fn set(&self, key: K, value: V) -> Result<Wr<K, V, D>> {
-    //        let _w = self.mu.lock();
-    //
-    //        let inner = Arc::clone(&self.inner.read());
-    //        match inner.set(key, value, None)? {
-    //            Ir::Res { inner, node, old } => {
-    //                let old_entry = old;
-    //                let seqno = inner.seqno;
-    //                *self.inner.write() = Arc::new(inner);
-    //                Ok(Wr { seqno, old_entry })
-    //            }
-    //            _ => unreachable!(),
-    //        }
-    //    }
-    //
-    //    pub fn set_cas(&self, key: K, value: V, cas: u64) -> Result<Wr<K, V, D>> {
-    //        let _w = self.mu.lock();
-    //
-    //        let inner = Arc::clone(&self.inner.read());
-    //        match inner.set_cas(key, value, cas, None)? {
-    //            Ir::Res { inner, node, old } => {
-    //                let old_entry = old;
-    //                let seqno = inner.seqno;
-    //                *self.inner.write() = Arc::new(inner);
-    //                Ok(Wr { seqno, old_entry })
-    //            }
-    //            _ => unreachable!(),
-    //        }
-    //    }
+    pub fn write(&self, op: Write<K, V>) -> Result<Wr<K, V, D>> {
+        let _w = self.mu.lock();
+
+        let inner = Arc::clone(&self.inner.read());
+        let (inner, old_entry) = match op {
+            Write::Set {
+                key,
+                value,
+                cas: None,
+                seqno,
+            } => match inner.set((key, value, seqno))? {
+                Ir::Root { inner, node, old } => (inner, old),
+                _ => unreachable!(),
+            },
+            Write::Set {
+                key,
+                value,
+                cas: Some(cas),
+                seqno,
+            } => match inner.set_cas((key, value, cas, seqno))? {
+                Ir::Root { inner, node, old } => (inner, old),
+                _ => unreachable!(),
+            },
+            Write::Ins { .. } => todo!(),
+            Write::Del { .. } => todo!(),
+            Write::Rem { .. } => todo!(),
+        };
+
+        let seqno = inner.seqno;
+        *self.inner.write() = Arc::new(inner);
+
+        Ok(Wr { seqno, old_entry })
+    }
+
+    pub fn set(&self, key: K, value: V) -> Result<Wr<K, V, D>> {
+        let _w = self.mu.lock();
+
+        let inner = Arc::clone(&self.inner.read());
+        let (seqno, old_entry) = match inner.set((key, value, None))? {
+            Ir::Root { inner, node, old } => {
+                let seqno = inner.seqno;
+                *self.inner.write() = Arc::new(inner);
+                (seqno, old)
+            }
+            _ => unreachable!(),
+        };
+
+        Ok(Wr { seqno, old_entry })
+    }
+
+    pub fn set_cas(&self, key: K, value: V, cas: u64) -> Result<Wr<K, V, D>> {
+        let _w = self.mu.lock();
+
+        let inner = Arc::clone(&self.inner.read());
+        let (seqno, old_entry) = match inner.set_cas((key, value, cas, None))? {
+            Ir::Root { inner, node, old } => {
+                let seqno = inner.seqno;
+                *self.inner.write() = Arc::new(inner);
+                (seqno, old)
+            }
+            _ => unreachable!(),
+        };
+
+        Ok(Wr { seqno, old_entry })
+    }
 }
 
 macro_rules! compute_n_count {
@@ -225,19 +235,12 @@ enum Ir<K, V, D> {
 }
 
 impl<K, V, D> Inner<K, V, D> {
-    fn set(&self, op: Write<K, V>) -> Result<Ir<K, V, D>> {
-        let (key, value, seqno) = match op {
-            Write::Set {
-                key, value, seqno, ..
-            } => {
-                let seqno = seqno.unwrap_or(self.seqno.saturating_add(1));
-                (key, value, seqno)
-            }
-            _ => unreachable!(),
-        };
+    fn set(&self, op: (K, V, Option<u64>)) -> Result<Ir<K, V, D>> {
+        let (key, value, seqno) = op;
+        let seqno = seqno.unwrap_or(self.seqno.saturating_add(1));
 
         let (mut root, node, old) = match &self.root {
-            Some(root) => match self.do_set(root, key, value, seqno)? {
+            Some(root) => match self.do_set(root, (key, value, seqno))? {
                 Ir::Res { root, node, old } => (root, node, old),
                 _ => unreachable!(),
             },
@@ -262,61 +265,42 @@ impl<K, V, D> Inner<K, V, D> {
         Ok(Ir::Root { inner, node, old })
     }
 
-    //fn set_cas(
-    //    &self,
-    //    key: K,
-    //    value: V,
-    //    cas: u64,
-    //    seqno: Option<u64>,
-    //) -> Result<Ir<K, V, D>> {
-    //    let seqno = seqno.unwrap_or(self.seqno.saturating_add(1));
+    fn set_cas(&self, op: (K, V, u64, Option<u64>)) -> Result<Ir<K, V, D>> {
+        let (key, value, cas, seqno) = op;
+        let seqno = seqno.unwrap_or(self.seqno.saturating_add(1));
 
-    //    let (mut root, node, old) = match &self.root {
-    //        None if cas == 0 => {
-    //            let root: Node<K, V, D> = db::Entry::new(key, value, seqno).into();
-    //            (root, None, None)
-    //        }
-    //        None => err_at!(InvalidCAS, msg: "empty index, CAS {}", cas)?,
-    //        Some(root) => match self.do_set_cas(root, value, cas, seqno)? {
-    //            Ir::Cas { root, node, old } => (root, node, old),
-    //            _ => unreachable!(),
-    //        },
-    //    };
-    //    root.set_black();
-    //    let n_count = self.n_count + old.as_ref().map(|_| 0).unwrap_or(1);
-    //    let n_deleted = self.n_deleted.saturating_sub(
-    //        old.as_ref()
-    //            .map(|e| if e.is_deleted() { 1 } else { 0 })
-    //            .unwrap_or(0),
-    //    );
+        let (mut root, node, old) = match &self.root {
+            Some(root) => match self.do_set_cas(root, (key, value, cas, seqno))? {
+                Ir::Res { root, node, old } => (root, node, old),
+                _ => unreachable!(),
+            },
+            None if cas == 0 => {
+                let root: Node<K, V, D> = db::Entry::new(key, value, seqno).into();
+                (root, None, None)
+            }
+            None => err_at!(InvalidCAS, msg: "empty index, CAS {}", cas)?,
+        };
 
-    //    let inner = Inner {
-    //        root: Some(root),
-    //        seqno,
-    //        n_count,
-    //        n_deleted,
-    //    };
+        root.set_black();
 
-    //    Ok(Ir::Res { inner, node, old })
-    //}
+        let n_count = compute_n_count!(self.n_count, old.as_ref());
+        let n_deleted = compute_n_deleted!(self.n_deleted, old.as_ref());
 
-    fn do_set(
-        &self,
-        node: &Node<K, V, D>,
-        key: K,
-        value: V,
-        seqno: u64,
-    ) -> Result<Ir<K, V, D>> {
+        let inner = Inner {
+            root: Some(root),
+            seqno,
+            n_count,
+            n_deleted,
+        };
+
+        Ok(Ir::Root { inner, node, old })
+    }
+
+    fn do_set(&self, n: &Node<K, V, D>, op: (K, V, u64)) -> Result<Ir<K, V, D>> {
         todo!()
     }
 
-    //    fn do_set_cas(
-    //        &self,
-    //        node: &Node<K, V, D>,
-    //        value: V,
-    //        cas: u64,
-    //        seqno: u64,
-    //    ) -> Result<Ir<K, V, D>> {
-    //        todo!()
-    //    }
+    fn do_set_cas(&self, n: &Node<K, V, D>, op: (K, V, u64, u64)) -> Result<Ir<K, V, D>> {
+        todo!()
+    }
 }
