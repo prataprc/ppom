@@ -29,7 +29,11 @@
 
 use mkit::{db, spinlock::Spinlock};
 
-use std::sync::{Arc, Mutex};
+use std::{
+    borrow::Borrow,
+    cmp::{self, Ordering},
+    sync::{Arc, Mutex},
+};
 
 use crate::{node::Node, op::Write, Error, Result};
 
@@ -130,7 +134,12 @@ pub struct Wr<K, V, D> {
 }
 
 impl<K, V, D> Mdb<K, V, D> {
-    pub fn write(&self, op: Write<K, V>) -> Result<Wr<K, V, D>> {
+    pub fn write(&self, op: Write<K, V>) -> Result<Wr<K, V, D>>
+    where
+        K: Clone + Ord,
+        V: Clone,
+        D: Clone,
+    {
         let _w = self.mu.lock();
 
         let inner = Arc::clone(&self.inner.read());
@@ -140,22 +149,45 @@ impl<K, V, D> Mdb<K, V, D> {
                 value,
                 cas: None,
                 seqno,
-            } => match inner.set((key, value, seqno))? {
-                Ir::Root { inner, node, old } => (inner, old),
-                _ => unreachable!(),
-            },
+            } => inner.set((key, value, seqno))?.into_root(),
             Write::Set {
                 key,
                 value,
                 cas: Some(cas),
                 seqno,
-            } => match inner.set_cas((key, value, cas, seqno))? {
-                Ir::Root { inner, node, old } => (inner, old),
-                _ => unreachable!(),
-            },
-            Write::Ins { .. } => todo!(),
-            Write::Del { .. } => todo!(),
-            Write::Rem { .. } => todo!(),
+            } => inner.set_cas((key, value, cas, seqno))?.into_root(),
+            Write::Ins {
+                key,
+                value,
+                cas: None,
+                seqno,
+            } => inner.insert((key, value, seqno))?.into_root(),
+            Write::Ins {
+                key,
+                value,
+                cas: Some(cas),
+                seqno,
+            } => inner.insert_cas((key, value, cas, seqno))?.into_root(),
+            Write::Del {
+                key,
+                cas: None,
+                seqno,
+            } => inner.delete((key, seqno))?.into_root(),
+            Write::Del {
+                key,
+                cas: Some(cas),
+                seqno,
+            } => inner.delete_cas((key, cas, seqno))?.into_root(),
+            Write::Rem {
+                key,
+                cas: None,
+                seqno,
+            } => inner.remove((key, seqno))?.into_root(),
+            Write::Rem {
+                key,
+                cas: Some(cas),
+                seqno,
+            } => inner.remove_cas((key, cas, seqno))?.into_root(),
         };
 
         let seqno = inner.seqno;
@@ -164,12 +196,17 @@ impl<K, V, D> Mdb<K, V, D> {
         Ok(Wr { seqno, old_entry })
     }
 
-    pub fn set(&self, key: K, value: V) -> Result<Wr<K, V, D>> {
+    pub fn set(&self, key: K, value: V) -> Result<Wr<K, V, D>>
+    where
+        K: Clone + Ord,
+        V: Clone,
+        D: Clone,
+    {
         let _w = self.mu.lock();
 
         let inner = Arc::clone(&self.inner.read());
         let (seqno, old_entry) = match inner.set((key, value, None))? {
-            Ir::Root { inner, node, old } => {
+            Ir::Root { inner, old } => {
                 let seqno = inner.seqno;
                 *self.inner.write() = Arc::new(inner);
                 (seqno, old)
@@ -180,12 +217,17 @@ impl<K, V, D> Mdb<K, V, D> {
         Ok(Wr { seqno, old_entry })
     }
 
-    pub fn set_cas(&self, key: K, value: V, cas: u64) -> Result<Wr<K, V, D>> {
+    pub fn set_cas(&self, key: K, value: V, cas: u64) -> Result<Wr<K, V, D>>
+    where
+        K: Clone + Ord,
+        V: Clone,
+        D: Clone,
+    {
         let _w = self.mu.lock();
 
         let inner = Arc::clone(&self.inner.read());
         let (seqno, old_entry) = match inner.set_cas((key, value, cas, None))? {
-            Ir::Root { inner, node, old } => {
+            Ir::Root { inner, old } => {
                 let seqno = inner.seqno;
                 *self.inner.write() = Arc::new(inner);
                 (seqno, old)
@@ -215,7 +257,7 @@ macro_rules! compute_n_deleted {
 
 #[derive(Clone)]
 struct Inner<K, V, D> {
-    root: Option<Node<K, V, D>>,
+    root: Option<Arc<Node<K, V, D>>>,
     seqno: u64,
     n_count: usize,
     n_deleted: usize,
@@ -224,83 +266,420 @@ struct Inner<K, V, D> {
 enum Ir<K, V, D> {
     Root {
         inner: Inner<K, V, D>,
-        node: Option<Node<K, V, D>>,
         old: Option<db::Entry<K, V, D>>,
     },
     Res {
-        root: Node<K, V, D>,
-        node: Option<Node<K, V, D>>,
+        root: Option<Arc<Node<K, V, D>>>,
         old: Option<db::Entry<K, V, D>>,
     },
 }
 
+impl<K, V, D> Ir<K, V, D> {
+    fn into_root(self) -> (Inner<K, V, D>, Option<db::Entry<K, V, D>>) {
+        match self {
+            Ir::Root { inner, old } => (inner, old),
+            _ => unreachable!(),
+        }
+    }
+
+    fn into_res(self) -> (Option<Arc<Node<K, V, D>>>, Option<db::Entry<K, V, D>>) {
+        match self {
+            Ir::Res { root, old } => (root, old),
+            _ => unreachable!(),
+        }
+    }
+}
+
 impl<K, V, D> Inner<K, V, D> {
-    fn set(&self, op: (K, V, Option<u64>)) -> Result<Ir<K, V, D>> {
+    fn set(&self, op: (K, V, Option<u64>)) -> Result<Ir<K, V, D>>
+    where
+        K: Clone + Ord,
+        V: Clone,
+        D: Clone,
+    {
         let (key, value, seqno) = op;
         let seqno = seqno.unwrap_or(self.seqno.saturating_add(1));
+        let root = self.root.as_ref().map(Borrow::borrow);
 
-        let (mut root, node, old) = match &self.root {
-            Some(root) => match self.do_set(root, (key, value, seqno))? {
-                Ir::Res { root, node, old } => (root, node, old),
-                _ => unreachable!(),
-            },
-            None => {
-                let root: Node<K, V, D> = db::Entry::new(key, value, seqno).into();
-                (root, None, None)
-            }
-        };
+        let (mut root, old) = self.do_set(root, (key, value, seqno))?.into_res();
 
-        root.set_black();
+        root.as_mut()
+            .map(|root| Arc::get_mut(root).map(|root| root.set_black()));
 
         let n_count = compute_n_count!(self.n_count, old.as_ref());
         let n_deleted = compute_n_deleted!(self.n_deleted, old.as_ref());
 
         let inner = Inner {
-            root: Some(root),
-            seqno,
+            root,
+            seqno: cmp::max(self.seqno, seqno),
             n_count,
             n_deleted,
         };
 
-        Ok(Ir::Root { inner, node, old })
+        Ok(Ir::Root { inner, old })
     }
 
-    fn set_cas(&self, op: (K, V, u64, Option<u64>)) -> Result<Ir<K, V, D>> {
+    fn set_cas(&self, op: (K, V, u64, Option<u64>)) -> Result<Ir<K, V, D>>
+    where
+        K: Clone + Ord,
+        V: Clone,
+        D: Clone,
+    {
         let (key, value, cas, seqno) = op;
         let seqno = seqno.unwrap_or(self.seqno.saturating_add(1));
+        let root = self.root.as_ref().map(Borrow::borrow);
 
-        let (mut root, node, old) = match &self.root {
-            Some(root) => match self.do_set_cas(root, (key, value, cas, seqno))? {
-                Ir::Res { root, node, old } => (root, node, old),
-                _ => unreachable!(),
-            },
-            None if cas == 0 => {
-                let root: Node<K, V, D> = db::Entry::new(key, value, seqno).into();
-                (root, None, None)
-            }
-            None => err_at!(InvalidCAS, msg: "empty index, CAS {}", cas)?,
-        };
+        let (mut root, old) = self.do_set_cas(root, (key, value, cas, seqno))?.into_res();
 
-        root.set_black();
+        root.as_mut()
+            .map(|root| Arc::get_mut(root).map(|root| root.set_black()));
 
         let n_count = compute_n_count!(self.n_count, old.as_ref());
         let n_deleted = compute_n_deleted!(self.n_deleted, old.as_ref());
 
         let inner = Inner {
-            root: Some(root),
-            seqno,
+            root: root,
+            seqno: cmp::max(self.seqno, seqno),
             n_count,
             n_deleted,
         };
 
-        Ok(Ir::Root { inner, node, old })
+        Ok(Ir::Root { inner, old })
     }
 
-    fn do_set(&self, n: &Node<K, V, D>, op: (K, V, u64)) -> Result<Ir<K, V, D>> {
+    fn insert(&self, op: (K, V, Option<u64>)) -> Result<Ir<K, V, D>>
+    where
+        K: Clone + Ord,
+        V: Clone,
+        D: Clone,
+    {
         todo!()
     }
 
-    fn do_set_cas(&self, n: &Node<K, V, D>, op: (K, V, u64, u64)) -> Result<Ir<K, V, D>> {
+    fn insert_cas(&self, op: (K, V, u64, Option<u64>)) -> Result<Ir<K, V, D>>
+    where
+        K: Clone + Ord,
+        V: Clone,
+        D: Clone,
+    {
         todo!()
     }
+
+    fn delete(&self, op: (K, Option<u64>)) -> Result<Ir<K, V, D>>
+    where
+        K: Clone + Ord,
+        V: Clone,
+        D: Clone,
+    {
+        todo!()
+    }
+
+    fn delete_cas(&self, op: (K, u64, Option<u64>)) -> Result<Ir<K, V, D>>
+    where
+        K: Clone + Ord,
+        V: Clone,
+        D: Clone,
+    {
+        todo!()
+    }
+
+    fn remove(&self, op: (K, Option<u64>)) -> Result<Ir<K, V, D>>
+    where
+        K: Clone + Ord,
+        V: Clone,
+        D: Clone,
+    {
+        todo!()
+    }
+
+    fn remove_cas(&self, op: (K, u64, Option<u64>)) -> Result<Ir<K, V, D>>
+    where
+        K: Clone + Ord,
+        V: Clone,
+        D: Clone,
+    {
+        todo!()
+    }
+
+    fn do_set(&self, node: Option<&Node<K, V, D>>, op: (K, V, u64)) -> Result<Ir<K, V, D>>
+    where
+        K: Clone + Ord,
+        V: Clone,
+        D: Clone,
+    {
+        let (key, value, seqno) = op;
+
+        let node = match node {
+            Some(node) => node,
+            None => {
+                let node = db::Entry::new(key, value, seqno).into();
+                return Ok(Ir::Res {
+                    root: Some(Arc::new(node)),
+                    old: None,
+                });
+            }
+        };
+
+        let mut node: Node<K, V, D> = node.clone();
+
+        let (node, old) = match node.as_key().cmp(&key) {
+            Ordering::Greater => {
+                let left = node.left.as_ref().map(Borrow::borrow);
+                let (root, old) = self.do_set(left, (key, value, seqno))?.into_res();
+                node.left = root;
+                (walkuprot_23(node), old)
+            }
+            Ordering::Less => {
+                let right = node.right.as_ref().map(Borrow::borrow);
+                let (root, old) = self.do_set(right, (key, value, seqno))?.into_res();
+                node.right = root;
+                (walkuprot_23(node), old)
+            }
+            Ordering::Equal => {
+                let old = node.entry.clone();
+                node.set(value, seqno); // TODO: entry.xmerge(new_entry)?;
+                (node, Some(old))
+            }
+        };
+
+        Ok(Ir::Res {
+            root: Some(Arc::new(node)),
+            old,
+        })
+    }
+
+    fn do_set_cas(
+        &self,
+        node: Option<&Node<K, V, D>>,
+        op: (K, V, u64, u64),
+    ) -> Result<Ir<K, V, D>>
+    where
+        K: Clone + Ord,
+        V: Clone,
+        D: Clone,
+    {
+        let (key, value, cas, seqno) = op;
+
+        let node = match node {
+            Some(node) => node,
+            None if cas == 0 => {
+                let node = db::Entry::new(key, value, seqno).into();
+                return Ok(Ir::Res {
+                    root: Some(Arc::new(node)),
+                    old: None,
+                });
+            }
+            None => err_at!(InvalidCAS, msg: "set-cas {} with missing entry", cas)?,
+        };
+
+        let mut node: Node<K, V, D> = node.clone();
+
+        let (node, old) = match node.as_key().cmp(&key) {
+            Ordering::Greater => {
+                let left = node.left.as_ref().map(Borrow::borrow);
+                let (r, o) = self.do_set_cas(left, (key, value, cas, seqno))?.into_res();
+                node.left = r;
+                (walkuprot_23(node), o)
+            }
+            Ordering::Less => {
+                let right = node.right.as_ref().map(Borrow::borrow);
+                let (r, o) = self.do_set_cas(right, (key, value, cas, seqno))?.into_res();
+                node.right = r;
+                (walkuprot_23(node), o)
+            }
+            Ordering::Equal if node.is_deleted() && cas > 0 && cas != node.to_seqno() => {
+                err_at!(InvalidCAS, msg: "set-cas {} with deleted entry", cas)?
+            }
+            Ordering::Equal if !node.is_deleted() && cas != node.to_seqno() => {
+                err_at!(InvalidCAS, msg: "set-cas {} cas mismatch", cas)?
+            }
+            Ordering::Equal => {
+                let old = node.entry.clone();
+                node.set(value, seqno); // TODO: newnd.prepend_version(nentry, lsm)?;
+                (node, Some(old))
+            }
+        };
+
+        Ok(Ir::Res {
+            root: Some(Arc::new(node)),
+            old,
+        })
+    }
+}
+
+#[inline]
+fn is_red<K, V, D>(node: Option<&Node<K, V, D>>) -> bool {
+    node.map_or(false, |node| !node.is_black())
+}
+
+#[inline]
+fn is_black<K, V, D>(node: Option<&Node<K, V, D>>) -> bool {
+    node.map_or(true, Node::is_black)
+}
+
+fn walkuprot_23<K, V, D>(mut node: Node<K, V, D>) -> Node<K, V, D>
+where
+    K: Clone,
+    V: Clone,
+    D: Clone,
+{
+    if is_red(node.as_right_deref()) && !is_red(node.as_left_deref()) {
+        node = rotate_left(node)
+    }
+    let left = node.as_left_deref();
+    if is_red(left) && is_red(left.unwrap().as_left_deref()) {
+        node = rotate_right(node);
+    }
+    if is_red(node.as_left_deref()) && is_red(node.as_right_deref()) {
+        flip(&mut node)
+    }
+    node
+}
+
+//              (i)                       (i)
+//               |                         |
+//              node                     right
+//              /  \                      / \
+//             /    (r)                 (r)  \
+//            /       \                 /     \
+//          left     right           node     r-r
+//                    / \            /  \
+//                 r-l  r-r       left  r-l
+//
+fn rotate_left<K, V, D>(mut node: Node<K, V, D>) -> Node<K, V, D>
+where
+    K: Clone,
+    V: Clone,
+    D: Clone,
+{
+    let old_right: &Node<K, V, D> = node.right.as_ref().map(|r| r.borrow()).unwrap();
+    if is_black(Some(old_right)) {
+        panic!("rotateleft(): rotate black link ? call-the-programmer");
+    }
+
+    let mut right = old_right.clone();
+
+    node.right = right.left.take();
+    right.black = node.black;
+    node.set_red();
+    right.left = Some(Arc::new(node));
+
+    right
+}
+
+//              (i)                       (i)
+//               |                         |
+//              node                      left
+//              /  \                      / \
+//            (r)   \                   (r)  \
+//           /       \                 /      \
+//         left     right            l-l      node
+//         / \                                / \
+//      l-l  l-r                            l-r  right
+//
+fn rotate_right<K, V, D>(mut node: Node<K, V, D>) -> Node<K, V, D>
+where
+    K: Clone,
+    V: Clone,
+    D: Clone,
+{
+    let old_left: &Node<K, V, D> = node.left.as_ref().map(|r| r.borrow()).unwrap();
+    if is_black(Some(old_left)) {
+        panic!("rotateright(): rotate black link ? call-the-programmer")
+    }
+
+    let mut left = old_left.clone();
+
+    node.left = left.right.take();
+    left.black = node.black;
+    node.set_red();
+    left.right = Some(Arc::new(node));
+
+    left
+}
+
+//        (x)                   (!x)
+//         |                     |
+//        node                  node
+//        / \                   / \
+//      (y) (z)              (!y) (!z)
+//     /      \              /      \
+//   left    right         left    right
+//
+fn flip<K, V, D>(node: &mut Node<K, V, D>)
+where
+    K: Clone,
+    V: Clone,
+    D: Clone,
+{
+    let mut left = {
+        let left: &Node<K, V, D> = node.left.as_ref().map(|l| l.borrow()).unwrap();
+        left.clone()
+    };
+    let mut right = {
+        let right: &Node<K, V, D> = node.right.as_ref().map(|r| r.borrow()).unwrap();
+        right.clone()
+    };
+
+    node.toggle_link();
+    left.toggle_link();
+    right.toggle_link();
+
+    node.left = Some(Arc::new(left));
+    node.right = Some(Arc::new(right));
+}
+
+fn fixup<K, V, D>(mut node: Node<K, V, D>) -> Node<K, V, D>
+where
+    K: Clone,
+    V: Clone,
+    D: Clone,
+{
+    if is_red(node.as_right_deref()) {
+        node = rotate_left(node)
+    }
+    let left = node.as_left_deref();
+    if is_red(left) && is_red(left.unwrap().as_left_deref()) {
+        node = rotate_right(node)
+    }
+    if is_red(node.as_left_deref()) && is_red(node.as_right_deref()) {
+        flip(&mut node)
+    }
+    node
+}
+
+fn move_red_left<K, V, D>(mut node: Node<K, V, D>) -> Node<K, V, D>
+where
+    K: Clone,
+    V: Clone,
+    D: Clone,
+{
+    flip(&mut node);
+
+    if is_red(node.right.as_ref().unwrap().as_left_deref()) {
+        let right = node.right.take().unwrap();
+        let newr = {
+            let rr: &Node<K, V, D> = right.borrow();
+            rr.clone()
+        };
+        node.right = Some(Arc::new(rotate_right(newr)));
+        node = rotate_left(node);
+        flip(&mut node);
+    }
+    node
+}
+
+fn move_red_right<K, V, D>(mut node: Node<K, V, D>) -> Node<K, V, D>
+where
+    K: Clone,
+    V: Clone,
+    D: Clone,
+{
+    flip(&mut node);
+
+    if is_red(node.left.as_ref().unwrap().as_left_deref()) {
+        node = rotate_right(node);
+        flip(&mut node);
+    }
+    node
 }

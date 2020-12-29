@@ -7,7 +7,6 @@ use mkit::{data::Diff, db};
 pub struct Node<K, V, D> {
     pub entry: db::Entry<K, V, D>,
     pub black: bool,                       // store: black or red
-    pub dirty: bool,                       // new node in mvcc path
     pub left: Option<Arc<Node<K, V, D>>>,  // store: left child
     pub right: Option<Arc<Node<K, V, D>>>, // store: right child
 }
@@ -82,7 +81,6 @@ impl<K, V, D> From<db::Entry<K, V, D>> for Node<K, V, D> {
         Node {
             entry,
             black: false,
-            dirty: true,
             left: None,
             right: None,
         }

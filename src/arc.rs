@@ -16,16 +16,6 @@ pub struct SquashDebris<K, V, D> {
     pub tree_footprint: isize,
 }
 
-#[inline]
-fn is_red<K, V, D>(node: Option<&Node<K, V, D>>) -> bool {
-    node.map_or(false, |node| !node.is_black())
-}
-
-#[inline]
-fn is_black<K, V, D>(node: Option<&Node<K, V, D>>) -> bool {
-    node.map_or(true, Node::is_black)
-}
-
 /// Get the latest version for key.
 fn get<'a, K, V, D, Q>(
     node: Option<&'a Node<K, V, D>>,
