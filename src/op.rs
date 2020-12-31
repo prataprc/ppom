@@ -1,21 +1,32 @@
+/// Write operations allowed on [Mdb] index.
+///
+/// There is a corresponding API exposed vi [Mdb] type. For
+/// details refer to corresponding method. `cas` is optional where ever
+/// it is applicable. Additionally, it is possible to set the sequence
+/// number for each write-operation, which is useful to replaying operations
+/// from external entities like Write-Ahead-Logs.
 pub enum Write<K, V> {
+    /// Refer to Mdb::set.
     Set {
         key: K,
         value: V,
         cas: Option<u64>,
         seqno: Option<u64>,
     },
+    /// Refer to Mdb::insert.
     Ins {
         key: K,
         value: V,
         cas: Option<u64>,
         seqno: Option<u64>,
     },
+    /// Refer to Mdb::delete.
     Del {
         key: K,
         cas: Option<u64>,
         seqno: Option<u64>,
     },
+    /// Refer to Mdb::remove.
     Rem {
         key: K,
         cas: Option<u64>,
@@ -24,6 +35,7 @@ pub enum Write<K, V> {
 }
 
 impl<K, V> Write<K, V> {
+    /// Create a new `set` op.
     #[inline]
     pub fn set(key: K, value: V) -> Write<K, V> {
         Write::Set {
@@ -34,6 +46,7 @@ impl<K, V> Write<K, V> {
         }
     }
 
+    /// Create a new `insert` op.
     #[inline]
     pub fn insert(key: K, value: V) -> Write<K, V> {
         Write::Ins {
@@ -44,15 +57,7 @@ impl<K, V> Write<K, V> {
         }
     }
 
-    #[inline]
-    pub fn delete(key: K) -> Write<K, V> {
-        Write::Del {
-            key,
-            cas: None,
-            seqno: None,
-        }
-    }
-
+    /// Create a new `remove` op.
     #[inline]
     pub fn remove(key: K) -> Write<K, V> {
         Write::Rem {
@@ -62,6 +67,17 @@ impl<K, V> Write<K, V> {
         }
     }
 
+    /// Create a new `delete` op.
+    #[inline]
+    pub fn delete(key: K) -> Write<K, V> {
+        Write::Del {
+            key,
+            cas: None,
+            seqno: None,
+        }
+    }
+
+    /// Update op with seqno.
     pub fn set_seqno(self, seqno: u64) -> Write<K, V> {
         use Write::*;
 
@@ -95,6 +111,7 @@ impl<K, V> Write<K, V> {
         }
     }
 
+    /// Update op with cas.
     pub fn set_cas(self, cas: u64) -> Write<K, V> {
         use Write::*;
 

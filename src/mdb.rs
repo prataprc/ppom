@@ -32,10 +32,28 @@ use mkit::{data::Diff, db, spinlock::Spinlock};
 use std::{
     borrow::Borrow,
     cmp::{self, Ordering},
+    fmt, marker,
+    ops::{Bound, RangeBounds},
     sync::{Arc, Mutex},
 };
 
 use crate::{node::Node, op::Write, Error, Result};
+
+macro_rules! compute_n_count {
+    ($old:expr, $olde:expr) => {
+        $old + $olde.map(|_| 0).unwrap_or(1)
+    };
+}
+
+macro_rules! compute_n_deleted {
+    ($old:expr, $olde:expr) => {
+        $old.saturating_sub(
+            $olde
+                .map(|e| if e.is_deleted() { 1 } else { 0 })
+                .unwrap_or(0),
+        )
+    };
+}
 
 /// Mdb type for thread-safe, concurrent reads and serialized writes.
 ///
@@ -48,12 +66,6 @@ pub struct Mdb<K, V, D> {
     mu: Arc<Mutex<u32>>,
     inner: Arc<Spinlock<Arc<Inner<K, V, D>>>>,
 }
-
-//impl<K, V, D> TryFrom<Omap<K, V>> for Mdb<K, V, D> {
-//    fn try_from(m: Omap<K, V>) -> Self {
-//        todo!()
-//    }
-//}
 
 impl<K, V, D> Mdb<K, V, D> {
     pub fn new(name: &str) -> Mdb<K, V, D> {
@@ -79,12 +91,12 @@ impl<K, V, D> Mdb<K, V, D> {
         inner.n_count
     }
 
-    /// Return whether the index is empty.
+    /// Return whether index is empty.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
-    /// Return the current sequence-no for this index.
+    /// Return current sequence-no for index.
     pub fn to_seqno(&self) -> u64 {
         let inner = Arc::clone(&self.inner.read());
         inner.seqno
@@ -115,25 +127,181 @@ impl<K, V, D> Mdb<K, V, D> {
         self.name.clone()
     }
 
-    pub fn commit() -> Result<()> {
-        todo!()
-    }
-
-    pub fn compact() -> Result<usize> {
-        todo!()
-    }
-
+    /// Drop this index.
     pub fn close(self) -> Result<()> {
         Ok(())
     }
 }
 
+/// Result type for all write operations into index.
 pub struct Wr<K, V, D> {
+    /// Mutation sequence number for this write-operation.
     pub seqno: u64,
     pub old_entry: Option<db::Entry<K, V, D>>,
 }
 
 impl<K, V, D> Mdb<K, V, D> {
+    /// Set `key`, `value` into index. If an older entry exist with same key,
+    /// it shall be overwritten.
+    pub fn set(&self, key: K, value: V) -> Result<Wr<K, V, D>>
+    where
+        K: Clone + Ord,
+        V: Clone,
+        D: Clone,
+    {
+        let _w = self.mu.lock();
+
+        let inner = Arc::clone(&self.inner.read());
+        let op = (key, value, None, None);
+        let (inner, old_entry) = inner.set(op)?.into_root();
+        let seqno = inner.seqno;
+        *self.inner.write() = Arc::new(inner);
+
+        Ok(Wr { seqno, old_entry })
+    }
+
+    /// Set `key`, `value` into index. If already an entry in present with
+    /// `key`, `cas` should match entry's sequence-number. If index don't
+    /// have an entry with `key`, `cas` must be ZERO.
+    pub fn set_cas(&self, key: K, value: V, cas: u64) -> Result<Wr<K, V, D>>
+    where
+        K: Clone + Ord,
+        V: Clone,
+        D: Clone,
+    {
+        let _w = self.mu.lock();
+
+        let inner = Arc::clone(&self.inner.read());
+        let op = (key, value, Some(cas), None);
+        let (inner, old_entry) = inner.set(op)?.into_root();
+        let seqno = inner.seqno;
+        *self.inner.write() = Arc::new(inner);
+
+        Ok(Wr { seqno, old_entry })
+    }
+
+    /// Insert `key`, `value` into index. Non destructive version of
+    /// set method. If an older entry exist with same key, use [Diff]
+    /// to compute the delta and insert a new value-version.
+    pub fn insert(&self, key: K, value: V) -> Result<Wr<K, V, D>>
+    where
+        K: Clone + Ord,
+        V: Clone + Diff<Delta = D>,
+        D: Clone,
+    {
+        let _w = self.mu.lock();
+
+        let inner = Arc::clone(&self.inner.read());
+        let op = (key, value, None, None);
+        let (inner, old_entry) = inner.insert(op)?.into_root();
+        let seqno = inner.seqno;
+        *self.inner.write() = Arc::new(inner);
+
+        Ok(Wr { seqno, old_entry })
+    }
+
+    /// Insert `key`, `value` into index. Non destructive version of
+    /// set method. If an older entry exist with same `key`, use [Diff]
+    /// to compute the delta and insert a new value-version. Also if an
+    /// older entry exist with same `key`, `cas` should match entry's
+    /// sequence-number.
+    pub fn insert_cas(&self, key: K, value: V, cas: u64) -> Result<Wr<K, V, D>>
+    where
+        K: Clone + Ord,
+        V: Clone + Diff<Delta = D>,
+        D: Clone,
+    {
+        let _w = self.mu.lock();
+
+        let inner = Arc::clone(&self.inner.read());
+        let op = (key, value, Some(cas), None);
+        let (inner, old_entry) = inner.insert(op)?.into_root();
+        let seqno = inner.seqno;
+        *self.inner.write() = Arc::new(inner);
+
+        Ok(Wr { seqno, old_entry })
+    }
+
+    /// Remove the entry, matching the key, from the index.
+    pub fn remove<Q>(&self, key: &Q) -> Result<Wr<K, V, D>>
+    where
+        K: Clone + Ord + Borrow<Q>,
+        Q: Ord + ToOwned<Owned = K> + ?Sized,
+        V: Clone,
+        D: Clone,
+    {
+        let _w = self.mu.lock();
+
+        let inner = Arc::clone(&self.inner.read());
+        let op = (key, None, None);
+        let (inner, old_entry) = inner.remove(op)?.into_root();
+        let seqno = inner.seqno;
+        *self.inner.write() = Arc::new(inner);
+
+        Ok(Wr { seqno, old_entry })
+    }
+
+    /// Remove the entry, with matching key and matching entry's
+    /// sequencey-number with `cas`.
+    pub fn remove_cas<Q>(&self, key: &Q, cas: u64) -> Result<Wr<K, V, D>>
+    where
+        K: Clone + Ord + Borrow<Q>,
+        Q: Ord + ToOwned<Owned = K> + ?Sized,
+        V: Clone,
+        D: Clone,
+    {
+        let _w = self.mu.lock();
+
+        let inner = Arc::clone(&self.inner.read());
+        let op = (key, Some(cas), None);
+        let (inner, old_entry) = inner.remove(op)?.into_root();
+        let seqno = inner.seqno;
+        *self.inner.write() = Arc::new(inner);
+
+        Ok(Wr { seqno, old_entry })
+    }
+
+    /// Non destructive version of remove method. Mark entry as deleted.
+    pub fn delete<Q>(&self, key: &Q) -> Result<Wr<K, V, D>>
+    where
+        K: Clone + Ord + Borrow<Q>,
+        Q: Ord + ToOwned<Owned = K> + ?Sized,
+        V: Clone + Diff<Delta = D>,
+        D: Clone,
+        <V as Diff>::Delta: From<V>,
+    {
+        let _w = self.mu.lock();
+
+        let inner = Arc::clone(&self.inner.read());
+        let op = (key, None, None);
+        let (inner, old_entry) = inner.delete(op)?.into_root();
+        let seqno = inner.seqno;
+        *self.inner.write() = Arc::new(inner);
+
+        Ok(Wr { seqno, old_entry })
+    }
+
+    /// Non destructive version of remove method. Mark entry as deleted.
+    pub fn delete_cas<Q>(&self, key: &Q, cas: u64) -> Result<Wr<K, V, D>>
+    where
+        K: Clone + Ord + Borrow<Q>,
+        Q: Ord + ToOwned<Owned = K> + ?Sized,
+        V: Clone + Diff<Delta = D>,
+        D: Clone,
+        <V as Diff>::Delta: From<V>,
+    {
+        let _w = self.mu.lock();
+
+        let inner = Arc::clone(&self.inner.read());
+        let op = (key, Some(cas), None);
+        let (inner, old_entry) = inner.delete(op)?.into_root();
+        let seqno = inner.seqno;
+        *self.inner.write() = Arc::new(inner);
+
+        Ok(Wr { seqno, old_entry })
+    }
+
+    /// Apply op on top of this index. For more detail refer to [Write] type.
     pub fn write(&self, op: Write<K, V>) -> Result<Wr<K, V, D>>
     where
         K: Clone + Ord,
@@ -170,164 +338,6 @@ impl<K, V, D> Mdb<K, V, D> {
 
         Ok(Wr { seqno, old_entry })
     }
-
-    pub fn set(&self, key: K, value: V) -> Result<Wr<K, V, D>>
-    where
-        K: Clone + Ord,
-        V: Clone,
-        D: Clone,
-    {
-        let _w = self.mu.lock();
-
-        let inner = Arc::clone(&self.inner.read());
-        let op = (key, value, None, None);
-        let (inner, old_entry) = inner.set(op)?.into_root();
-        let seqno = inner.seqno;
-        *self.inner.write() = Arc::new(inner);
-
-        Ok(Wr { seqno, old_entry })
-    }
-
-    pub fn set_cas(&self, key: K, value: V, cas: u64) -> Result<Wr<K, V, D>>
-    where
-        K: Clone + Ord,
-        V: Clone,
-        D: Clone,
-    {
-        let _w = self.mu.lock();
-
-        let inner = Arc::clone(&self.inner.read());
-        let op = (key, value, Some(cas), None);
-        let (inner, old_entry) = inner.set(op)?.into_root();
-        let seqno = inner.seqno;
-        *self.inner.write() = Arc::new(inner);
-
-        Ok(Wr { seqno, old_entry })
-    }
-
-    pub fn insert(&self, key: K, value: V) -> Result<Wr<K, V, D>>
-    where
-        K: Clone + Ord,
-        V: Clone + Diff<Delta = D>,
-        D: Clone,
-    {
-        let _w = self.mu.lock();
-
-        let inner = Arc::clone(&self.inner.read());
-        let op = (key, value, None, None);
-        let (inner, old_entry) = inner.insert(op)?.into_root();
-        let seqno = inner.seqno;
-        *self.inner.write() = Arc::new(inner);
-
-        Ok(Wr { seqno, old_entry })
-    }
-
-    pub fn insert_cas(&self, key: K, value: V, cas: u64) -> Result<Wr<K, V, D>>
-    where
-        K: Clone + Ord,
-        V: Clone + Diff<Delta = D>,
-        D: Clone,
-    {
-        let _w = self.mu.lock();
-
-        let inner = Arc::clone(&self.inner.read());
-        let op = (key, value, Some(cas), None);
-        let (inner, old_entry) = inner.insert(op)?.into_root();
-        let seqno = inner.seqno;
-        *self.inner.write() = Arc::new(inner);
-
-        Ok(Wr { seqno, old_entry })
-    }
-
-    pub fn remove<Q>(&self, key: &Q) -> Result<Wr<K, V, D>>
-    where
-        K: Clone + Ord + Borrow<Q>,
-        Q: Ord + ToOwned<Owned = K> + ?Sized,
-        V: Clone,
-        D: Clone,
-    {
-        let _w = self.mu.lock();
-
-        let inner = Arc::clone(&self.inner.read());
-        let op = (key, None, None);
-        let (inner, old_entry) = inner.remove(op)?.into_root();
-        let seqno = inner.seqno;
-        *self.inner.write() = Arc::new(inner);
-
-        Ok(Wr { seqno, old_entry })
-    }
-
-    pub fn remove_cas<Q>(&self, key: &Q, cas: u64) -> Result<Wr<K, V, D>>
-    where
-        K: Clone + Ord + Borrow<Q>,
-        Q: Ord + ToOwned<Owned = K> + ?Sized,
-        V: Clone,
-        D: Clone,
-    {
-        let _w = self.mu.lock();
-
-        let inner = Arc::clone(&self.inner.read());
-        let op = (key, Some(cas), None);
-        let (inner, old_entry) = inner.remove(op)?.into_root();
-        let seqno = inner.seqno;
-        *self.inner.write() = Arc::new(inner);
-
-        Ok(Wr { seqno, old_entry })
-    }
-
-    pub fn delete<Q>(&self, key: &Q) -> Result<Wr<K, V, D>>
-    where
-        K: Clone + Ord + Borrow<Q>,
-        Q: Ord + ToOwned<Owned = K> + ?Sized,
-        V: Clone + Diff<Delta = D>,
-        D: Clone,
-        <V as Diff>::Delta: From<V>,
-    {
-        let _w = self.mu.lock();
-
-        let inner = Arc::clone(&self.inner.read());
-        let op = (key, None, None);
-        let (inner, old_entry) = inner.delete(op)?.into_root();
-        let seqno = inner.seqno;
-        *self.inner.write() = Arc::new(inner);
-
-        Ok(Wr { seqno, old_entry })
-    }
-
-    pub fn delete_cas<Q>(&self, key: &Q, cas: u64) -> Result<Wr<K, V, D>>
-    where
-        K: Clone + Ord + Borrow<Q>,
-        Q: Ord + ToOwned<Owned = K> + ?Sized,
-        V: Clone + Diff<Delta = D>,
-        D: Clone,
-        <V as Diff>::Delta: From<V>,
-    {
-        let _w = self.mu.lock();
-
-        let inner = Arc::clone(&self.inner.read());
-        let op = (key, Some(cas), None);
-        let (inner, old_entry) = inner.delete(op)?.into_root();
-        let seqno = inner.seqno;
-        *self.inner.write() = Arc::new(inner);
-
-        Ok(Wr { seqno, old_entry })
-    }
-}
-
-macro_rules! compute_n_count {
-    ($old:expr, $olde:expr) => {
-        $old + $olde.map(|_| 0).unwrap_or(1)
-    };
-}
-
-macro_rules! compute_n_deleted {
-    ($old:expr, $olde:expr) => {
-        $old.saturating_sub(
-            $olde
-                .map(|e| if e.is_deleted() { 1 } else { 0 })
-                .unwrap_or(0),
-        )
-    };
 }
 
 #[derive(Clone)]
@@ -939,4 +949,290 @@ where
         flip(&mut node);
     }
     node
+}
+
+// Get the latest version for key.
+fn get<'a, K, V, D, Q>(
+    node: Option<&'a Node<K, V, D>>,
+    key: &Q,
+) -> Result<db::Entry<K, V, D>>
+where
+    K: Clone + Borrow<Q>,
+    Q: Ord,
+    V: Clone,
+    D: Clone,
+{
+    match node {
+        Some(nref) => match nref.as_key().borrow().cmp(key) {
+            Ordering::Less => get(nref.as_right_deref(), key),
+            Ordering::Greater => get(nref.as_left_deref(), key),
+            Ordering::Equal => Ok(nref.entry.clone()),
+        },
+        None => err_at!(KeyNotFound, msg: "get missing key"),
+    }
+}
+
+// list of validation done by this function
+// * Verify the sort order between a node and its left/right child.
+// * No node which has RIGHT RED child and LEFT BLACK child (or NULL child).
+// * Make sure there are no consecutive reds.
+// * Make sure number of blacks are same on both left and right arm.
+fn validate_tree<K, V, D>(
+    node: Option<&Node<K, V, D>>,
+    fromred: bool,
+    mut ss: (usize, usize), // (no_blacks, no_deleted)
+    depth: usize,
+) -> Result<(usize, usize)>
+where
+    K: Ord + fmt::Debug,
+{
+    let red = is_red(node);
+
+    let node = match node {
+        Some(node) if fromred && red => err_at!(Fatal, msg: "Mdb has consecutive reds")?,
+        Some(node) => node,
+        None => return Ok(ss),
+    };
+
+    // confirm sort order in the tree.
+    let (left, right) = {
+        if let Some(left) = node.as_left_deref() {
+            if left.as_key().ge(node.as_key()) {
+                let (lk, nk) = (left.as_key(), node.as_key());
+                err_at!(Fatal, msg: "Mdb left:{:?}, parent:{:?}", lk, nk)?;
+            }
+        }
+        if let Some(right) = node.as_right_deref() {
+            if right.as_key().le(node.as_key()) {
+                let (rk, nk) = (right.as_key(), node.as_key());
+                err_at!(Fatal, msg: "Mdb right:{:?}, parent:{:?}", rk, nk)?;
+            }
+        }
+        (node.as_left_deref(), node.as_right_deref())
+    };
+
+    if !red {
+        ss.0 += 1;
+    }
+    let mut ss_l = validate_tree(left, red, ss, depth + 1)?;
+    let ss_r = validate_tree(right, red, ss, depth + 1)?;
+
+    if ss_l.0 != ss_r.0 {
+        err_at!(Fatal, msg: "Mdb unbalanced blacks l:{}, r:{}", ss_l.0, ss_r.0)?;
+    }
+
+    ss_l.1 += ss_r.1;
+    ss_l.1 += if node.is_deleted() { 1 } else { 0 };
+
+    Ok(ss_l)
+}
+
+// Iterator type, to do full table scan.
+//
+// A full table scan using this type is optimal when used with concurrent
+// read threads, but not with concurrent write threads.
+pub struct Iter<K, V, D> {
+    paths: Vec<Fragment<K, V, D>>,
+}
+
+impl<K, V, D> Iterator for Iter<K, V, D>
+where
+    K: Clone,
+    V: Clone,
+    D: Clone,
+{
+    type Item = db::Entry<K, V, D>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let path = self.paths.last_mut()?;
+            match path.flag {
+                IFlag::Left => {
+                    path.flag = IFlag::Center;
+                    break Some(path.node.entry.clone());
+                }
+                IFlag::Center => {
+                    path.flag = IFlag::Right;
+                    let right = path.node.right.as_ref().map(Arc::clone);
+                    build_iter(IFlag::Left, right, &mut self.paths)
+                }
+                IFlag::Right => {
+                    self.paths.pop();
+                }
+            }
+        }
+    }
+}
+
+// Iterator type, to do range scan between a _lower-bound_ and _higher-bound_.
+pub struct Range<K, V, D, R, Q> {
+    range: R,
+    iter: Iter<K, V, D>,
+    fin: bool,
+    high: marker::PhantomData<Q>,
+}
+
+impl<K, V, D, R, Q> Iterator for Range<K, V, D, R, Q>
+where
+    K: Clone + Borrow<Q>,
+    V: Clone,
+    D: Clone,
+    Q: Ord,
+    R: RangeBounds<Q>,
+{
+    type Item = db::Entry<K, V, D>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.fin {
+            false => {
+                let entry = self.iter.next()?;
+                let qey = entry.as_key().borrow();
+                match self.range.end_bound() {
+                    Bound::Unbounded => Some(entry),
+                    Bound::Included(high) if qey.le(high) => Some(entry),
+                    Bound::Excluded(high) if qey.lt(high) => Some(entry),
+                    Bound::Included(_) | Bound::Excluded(_) => {
+                        self.fin = true;
+                        None
+                    }
+                }
+            }
+            true => None,
+        }
+    }
+}
+
+// Iterator type, to do range scan between a _higher-bound_ and _lower-bound_.
+pub struct Reverse<K, V, D, R, Q> {
+    range: R,
+    iter: Iter<K, V, D>,
+    fin: bool,
+    low: marker::PhantomData<Q>,
+}
+
+impl<K, V, D, R, Q> Iterator for Reverse<K, V, D, R, Q>
+where
+    K: Clone + Borrow<Q>,
+    V: Clone,
+    D: Clone,
+    R: RangeBounds<Q>,
+    Q: Ord,
+{
+    type Item = db::Entry<K, V, D>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.fin {
+            false => {
+                let entry = self.iter.next()?;
+                let qey = entry.as_key().borrow();
+                match self.range.end_bound() {
+                    Bound::Unbounded => Some(entry),
+                    Bound::Included(low) if qey.ge(low) => Some(entry),
+                    Bound::Excluded(low) if qey.gt(low) => Some(entry),
+                    Bound::Included(_) | Bound::Excluded(_) => {
+                        self.fin = true;
+                        None
+                    }
+                }
+            }
+            true => None,
+        }
+    }
+}
+
+// Continuous iteration without walking through the whole tree from root.
+// Achieved by maintaining a FIFO queue of tree-path to the previous
+// iterated node. Each node in the FIFO queue is a tuple of mdb-node and
+// its current state (IFlag), together this tuple is called as a Fragment.
+struct Fragment<K, V, D> {
+    flag: IFlag,
+    node: Arc<Node<K, V, D>>,
+}
+#[derive(Copy, Clone)]
+enum IFlag {
+    Left,   // left path is iterated.
+    Center, // current node is iterated.
+    Right,  // right paths is being iterated.
+}
+
+fn build_iter<K, V, D>(
+    flag: IFlag,
+    node: Option<Arc<Node<K, V, D>>>,
+    paths: &mut Vec<Fragment<K, V, D>>,
+) {
+    if let Some(node) = node {
+        let item = Fragment {
+            flag,
+            node: Arc::clone(&node),
+        };
+        let node = match flag {
+            IFlag::Left => node.left.as_ref().map(Arc::clone),
+            IFlag::Right => node.right.as_ref().map(Arc::clone),
+            IFlag::Center => unreachable!(),
+        };
+        paths.push(item);
+        build_iter(flag, node, paths)
+    }
+}
+
+fn find_start<K, V, D, Q>(
+    node: Option<Arc<Node<K, V, D>>>,
+    low: &Q,
+    incl: bool,
+    mut paths: Vec<Fragment<K, V, D>>,
+) where
+    K: Borrow<Q>,
+    Q: Ord + ?Sized,
+{
+    if let Some(node) = node {
+        let left = node.left.as_ref().map(Arc::clone);
+        let right = node.right.as_ref().map(Arc::clone);
+
+        let cmp = node.as_key().borrow().cmp(low);
+
+        let flag = match cmp {
+            Ordering::Less => IFlag::Right,
+            Ordering::Equal if incl => IFlag::Left,
+            Ordering::Equal => IFlag::Center,
+            Ordering::Greater => IFlag::Left,
+        };
+        paths.push(Fragment { flag, node });
+
+        match cmp {
+            Ordering::Equal => (),
+            Ordering::Less => find_start(right, low, incl, paths),
+            Ordering::Greater => find_start(left, low, incl, paths),
+        }
+    }
+}
+
+fn find_end<K, V, D, Q>(
+    node: Option<Arc<Node<K, V, D>>>,
+    high: &Q,
+    incl: bool,
+    mut paths: Vec<Fragment<K, V, D>>,
+) where
+    K: Borrow<Q>,
+    Q: Ord + ?Sized,
+{
+    if let Some(node) = node {
+        let left = node.left.as_ref().map(Arc::clone);
+        let right = node.right.as_ref().map(Arc::clone);
+
+        let cmp = node.as_key().borrow().cmp(high);
+        let flag = match cmp {
+            Ordering::Less => IFlag::Right,
+            Ordering::Equal if incl => IFlag::Right,
+            Ordering::Equal => IFlag::Center,
+            Ordering::Greater => IFlag::Left,
+        };
+
+        paths.push(Fragment { flag, node });
+
+        match cmp {
+            Ordering::Equal => (),
+            Ordering::Less => find_end(right, high, incl, paths),
+            Ordering::Greater => find_end(left, high, incl, paths),
+        }
+    }
 }

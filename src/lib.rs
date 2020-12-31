@@ -54,12 +54,11 @@ macro_rules! err_at {
     }};
 }
 
-mod arc;
-mod mem_db;
+mod mdb;
 mod node;
 mod op;
 
-pub use mem_db::Mdb;
+pub use mdb::Mdb;
 
 /// Error variants that can be returned by this package's API.
 ///

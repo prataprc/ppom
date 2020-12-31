@@ -70,6 +70,10 @@ impl<K, V, D> Node<K, V, D> {
     pub fn to_seqno(&self) -> u64 {
         self.entry.to_seqno()
     }
+
+    pub fn is_deleted(&self) -> bool {
+        self.entry.is_deleted()
+    }
 }
 
 impl<K, V, D> From<db::Entry<K, V, D>> for Node<K, V, D> {
