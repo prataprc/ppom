@@ -16,12 +16,19 @@ impl<K, V, D> Node<K, V, D> {
         self.entry.value.set(value, seqno)
     }
 
-    pub fn insert(&mut self, value: db::Value<V>)
+    pub fn insert(&mut self, value: V, seqno: u64)
+    where
+        V: Clone + Diff<Delta = D>,
+    {
+        self.entry.insert(value, seqno)
+    }
+
+    pub fn delete(&mut self, seqno: u64)
     where
         V: Clone + Diff<Delta = D>,
         <V as Diff>::Delta: From<V>,
     {
-        self.entry.insert(value)
+        self.entry.delete(seqno)
     }
 
     #[inline]
@@ -60,19 +67,8 @@ impl<K, V, D> Node<K, V, D> {
         self.entry.as_key()
     }
 
-    pub fn to_key(&self) -> K
-    where
-        K: Clone,
-    {
-        self.entry.to_key()
-    }
-
     pub fn to_seqno(&self) -> u64 {
         self.entry.to_seqno()
-    }
-
-    pub fn is_deleted(&self) -> bool {
-        self.entry.is_deleted()
     }
 }
 
