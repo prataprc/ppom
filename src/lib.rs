@@ -56,9 +56,12 @@ macro_rules! err_at {
 
 mod mdb;
 mod node;
+mod omap;
 mod op;
 
 pub use mdb::Mdb;
+pub use omap::OMap;
+pub use op::Write;
 
 /// Error variants that can be returned by this package's API.
 ///

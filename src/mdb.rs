@@ -1369,13 +1369,13 @@ fn find_end<K, V, D, Q>(
         let right = node.right.as_ref().map(Arc::clone);
 
         let cmp = node.as_key().borrow().cmp(high);
+
         let flag = match cmp {
             Ordering::Less => IFlag::Right,
             Ordering::Equal if incl => IFlag::Right,
             Ordering::Equal => IFlag::Center,
             Ordering::Greater => IFlag::Left,
         };
-
         paths.push(Fragment { flag, node });
 
         match cmp {

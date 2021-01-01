@@ -1,3 +1,6 @@
+#[allow(unused_imports)]
+use crate::Mdb;
+
 /// Write operations allowed on [Mdb] index.
 ///
 /// There is a corresponding API exposed vi [Mdb] type. For
