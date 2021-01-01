@@ -39,6 +39,8 @@ use std::{
 
 use crate::{node::Node, op::Write, Error, Result};
 
+pub const MAX_TREE_DEPTH: usize = 100;
+
 macro_rules! compute_n_count {
     ($old:expr, $olde:expr) => {
         $old + $olde.map(|_| 0).unwrap_or(1)
@@ -337,6 +339,60 @@ impl<K, V, D> Mdb<K, V, D> {
         *self.inner.write() = Arc::new(inner);
 
         Ok(Wr { seqno, old_entry })
+    }
+}
+
+impl<K, V, D> Mdb<K, V, D> {
+    pub fn get<Q>(&self, key: &Q) -> Result<db::Entry<K, V, D>>
+    where
+        K: Clone + Borrow<Q>,
+        V: Clone,
+        D: Clone,
+        Q: Ord + ?Sized,
+    {
+        let inner = Arc::clone(&self.inner.read());
+        inner.get(key)
+    }
+
+    pub fn iter(&mut self) -> Result<Iter<K, V, D>> {
+        let inner = Arc::clone(&self.inner.read());
+        inner.iter()
+    }
+
+    pub fn range<R, Q>(&mut self, range: R) -> Result<Range<K, V, D, R, Q>>
+    where
+        K: Borrow<Q>,
+        R: RangeBounds<Q>,
+        Q: Ord + ?Sized,
+    {
+        let inner = Arc::clone(&self.inner.read());
+        inner.range(range)
+    }
+
+    pub fn reverse<R, Q>(&mut self, range: R) -> Result<Reverse<K, V, D, R, Q>>
+    where
+        K: Borrow<Q>,
+        R: RangeBounds<Q>,
+        Q: Ord + ?Sized,
+    {
+        let inner = Arc::clone(&self.inner.read());
+        inner.reverse(range)
+    }
+
+    /// Validate Mdb tree with following rules:
+    ///
+    /// * Root node is always black in color.
+    /// * Verify the sort order between a node and its left/right child.
+    /// * No node has RIGHT RED child and LEFT BLACK child (or NULL child).
+    /// * Make sure there are no consecutive reds.
+    /// * Make sure number of blacks are same on both left and right arm.
+    /// * Make sure that the maximum depth do not exceed MAX_TREE_DEPTH.
+    pub fn validate(&self) -> Result<()>
+    where
+        K: Ord + fmt::Debug,
+    {
+        let inner = Arc::clone(&self.inner.read());
+        inner.validate()
     }
 }
 
@@ -774,6 +830,97 @@ impl<K, V, D> Inner<K, V, D> {
     }
 }
 
+impl<K, V, D> Inner<K, V, D> {
+    fn get<Q>(&self, key: &Q) -> Result<db::Entry<K, V, D>>
+    where
+        K: Clone + Borrow<Q>,
+        V: Clone,
+        D: Clone,
+        Q: Ord + ?Sized,
+    {
+        let root = self.root.as_ref().map(Borrow::borrow);
+        get(root, key)
+    }
+
+    fn iter(&self) -> Result<Iter<K, V, D>> {
+        let root = self.root.as_ref().map(Arc::clone);
+        let mut paths = Vec::default();
+        build_iter(IFlag::Left, root, &mut paths);
+
+        Ok(Iter { paths })
+    }
+
+    fn range<R, Q>(&self, range: R) -> Result<Range<K, V, D, R, Q>>
+    where
+        K: Borrow<Q>,
+        R: RangeBounds<Q>,
+        Q: Ord + ?Sized,
+    {
+        let iter = {
+            let root = self.root.as_ref().map(Arc::clone);
+            let mut paths = Vec::default();
+            match range.start_bound() {
+                Bound::Unbounded => build_iter(IFlag::Left, root, &mut paths),
+                Bound::Included(low) => find_start(root, low, true, &mut paths),
+                Bound::Excluded(low) => find_start(root, low, false, &mut paths),
+            };
+            Iter { paths }
+        };
+
+        Ok(Range {
+            range,
+            iter,
+            fin: false,
+            high: marker::PhantomData,
+        })
+    }
+
+    fn reverse<R, Q>(&self, range: R) -> Result<Reverse<K, V, D, R, Q>>
+    where
+        K: Borrow<Q>,
+        R: RangeBounds<Q>,
+        Q: Ord + ?Sized,
+    {
+        let iter = {
+            let root = self.root.as_ref().map(Arc::clone);
+            let mut paths = Vec::default();
+            match range.end_bound() {
+                Bound::Unbounded => build_iter(IFlag::Right, root, &mut paths),
+                Bound::Included(high) => find_end(root, high, true, &mut paths),
+                Bound::Excluded(high) => find_end(root, high, false, &mut paths),
+            };
+            Iter { paths }
+        };
+
+        Ok(Reverse {
+            range,
+            iter,
+            fin: false,
+            low: marker::PhantomData,
+        })
+    }
+
+    fn validate(&self) -> Result<()>
+    where
+        K: Ord + fmt::Debug,
+    {
+        let root = self.root.as_ref().map(Borrow::borrow);
+        let (red, depth) = (is_red(root), 0);
+
+        if red {
+            err_at!(Fatal, msg: "root node must be black")?;
+        }
+
+        let ss = (0, 0); // (blacks, n_deleted);
+        let ss = validate_tree(root, red, ss, depth)?;
+        if ss.1 != self.n_deleted {
+            err_at!(Fatal, msg: "n_deleted {} != {}", ss.1, self.n_deleted)?;
+        }
+
+        Ok(())
+    }
+}
+
 #[inline]
 fn is_red<K, V, D>(node: Option<&Node<K, V, D>>) -> bool {
     node.map_or(false, |node| !node.is_black())
@@ -952,13 +1099,10 @@ where
 }
 
 // Get the latest version for key.
-fn get<'a, K, V, D, Q>(
-    node: Option<&'a Node<K, V, D>>,
-    key: &Q,
-) -> Result<db::Entry<K, V, D>>
+fn get<K, V, D, Q>(node: Option<&Node<K, V, D>>, key: &Q) -> Result<db::Entry<K, V, D>>
 where
     K: Clone + Borrow<Q>,
-    Q: Ord,
+    Q: Ord + ?Sized,
     V: Clone,
     D: Clone,
 {
@@ -972,15 +1116,10 @@ where
     }
 }
 
-// list of validation done by this function
-// * Verify the sort order between a node and its left/right child.
-// * No node which has RIGHT RED child and LEFT BLACK child (or NULL child).
-// * Make sure there are no consecutive reds.
-// * Make sure number of blacks are same on both left and right arm.
 fn validate_tree<K, V, D>(
     node: Option<&Node<K, V, D>>,
     fromred: bool,
-    mut ss: (usize, usize), // (no_blacks, no_deleted)
+    mut ss: (usize, usize), // (n_blacks, n_deleted)
     depth: usize,
 ) -> Result<(usize, usize)>
 where
@@ -989,10 +1128,14 @@ where
     let red = is_red(node);
 
     let node = match node {
-        Some(node) if fromred && red => err_at!(Fatal, msg: "Mdb has consecutive reds")?,
+        Some(_) if fromred && red => err_at!(Fatal, msg: "Mdb has consecutive reds")?,
         Some(node) => node,
         None => return Ok(ss),
     };
+
+    if depth > MAX_TREE_DEPTH {
+        err_at!(Fatal, msg: "tree exceeds max_depth {}", depth)?;
+    }
 
     // confirm sort order in the tree.
     let (left, right) = {
@@ -1065,7 +1208,10 @@ where
 }
 
 // Iterator type, to do range scan between a _lower-bound_ and _higher-bound_.
-pub struct Range<K, V, D, R, Q> {
+pub struct Range<K, V, D, R, Q>
+where
+    Q: ?Sized,
+{
     range: R,
     iter: Iter<K, V, D>,
     fin: bool,
@@ -1077,7 +1223,7 @@ where
     K: Clone + Borrow<Q>,
     V: Clone,
     D: Clone,
-    Q: Ord,
+    Q: Ord + ?Sized,
     R: RangeBounds<Q>,
 {
     type Item = db::Entry<K, V, D>;
@@ -1103,7 +1249,10 @@ where
 }
 
 // Iterator type, to do range scan between a _higher-bound_ and _lower-bound_.
-pub struct Reverse<K, V, D, R, Q> {
+pub struct Reverse<K, V, D, R, Q>
+where
+    Q: ?Sized,
+{
     range: R,
     iter: Iter<K, V, D>,
     fin: bool,
@@ -1116,7 +1265,7 @@ where
     V: Clone,
     D: Clone,
     R: RangeBounds<Q>,
-    Q: Ord,
+    Q: Ord + ?Sized,
 {
     type Item = db::Entry<K, V, D>;
 
@@ -1179,7 +1328,7 @@ fn find_start<K, V, D, Q>(
     node: Option<Arc<Node<K, V, D>>>,
     low: &Q,
     incl: bool,
-    mut paths: Vec<Fragment<K, V, D>>,
+    paths: &mut Vec<Fragment<K, V, D>>,
 ) where
     K: Borrow<Q>,
     Q: Ord + ?Sized,
@@ -1210,7 +1359,7 @@ fn find_end<K, V, D, Q>(
     node: Option<Arc<Node<K, V, D>>>,
     high: &Q,
     incl: bool,
-    mut paths: Vec<Fragment<K, V, D>>,
+    paths: &mut Vec<Fragment<K, V, D>>,
 ) where
     K: Borrow<Q>,
     Q: Ord + ?Sized,
