@@ -12,6 +12,7 @@ use crate::{Error, Result};
 /// Simple ordered-map type using [left-leaning-red-black][llrb] tree.
 ///
 /// Refer package level documentation for brief description.
+///
 /// [llrb]: https://en.wikipedia.org/wiki/Left-leaning_red-black_tree
 pub struct OMap<K, V> {
     root: Option<Box<Node<K, V>>>,
@@ -53,6 +54,18 @@ impl<K, V> OMap<K, V> {
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.n_count == 0
+    }
+
+    #[allow(dead_code)]
+    #[cfg(test)]
+    pub fn pretty_print(&self)
+    where
+        K: fmt::Debug,
+        V: fmt::Debug,
+    {
+        self.root
+            .as_ref()
+            .map(|n| n.as_ref().pretty_print("".to_string()));
     }
 }
 
@@ -154,7 +167,7 @@ impl<K, V> OMap<K, V> {
         let mut paths = Vec::default();
         build_iter(IFlag::Left, node, &mut paths);
 
-        Iter { paths }
+        Iter { paths, frwrd: true }
     }
 
     /// Range over all entries from low to high, specified by `range`.
@@ -201,7 +214,7 @@ impl<K, V> OMap<K, V> {
             Bound::Included(low) => find_start(root, low, true, &mut paths),
             Bound::Excluded(low) => find_start(root, low, false, &mut paths),
         };
-        let iter = Iter { paths };
+        let iter = Iter { paths, frwrd: true };
 
         Range {
             range,
@@ -226,6 +239,7 @@ impl<K, V> OMap<K, V> {
     /// let low = Bound::Included("key1");
     /// let high = Bound::Included("key3");
     /// let mut iter = index.reverse::<_, str>((low, high));
+    ///
     /// let item = iter.next();
     /// assert_eq!(item, Some(("key3".to_string(), "value3".to_string())));
     /// let item = iter.last();
@@ -245,7 +259,10 @@ impl<K, V> OMap<K, V> {
             Bound::Included(high) => find_end(root, high, true, &mut paths),
             Bound::Excluded(high) => find_end(root, high, false, &mut paths),
         };
-        let iter = Iter { paths };
+        let iter = Iter {
+            paths,
+            frwrd: false,
+        };
 
         Reverse {
             range,
@@ -557,8 +574,10 @@ fn move_red_right<K, V>(mut node: Box<Node<K, V>>) -> Box<Node<K, V>> {
     node
 }
 
+#[derive(Debug)]
 pub struct Iter<'a, K, V> {
     paths: Vec<Fragment<'a, K, V>>,
+    frwrd: bool,
 }
 
 impl<'a, K, V> Iterator for Iter<'a, K, V>
@@ -571,24 +590,42 @@ where
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             let path = self.paths.last_mut()?;
-            match path.flag {
-                IFlag::Left => {
-                    path.flag = IFlag::Center;
-                    break Some((path.node.key.clone(), path.node.value.clone()));
+            if self.frwrd {
+                match path.flag {
+                    IFlag::Left => {
+                        path.flag = IFlag::Center;
+                        break Some((path.node.key.clone(), path.node.value.clone()));
+                    }
+                    IFlag::Center => {
+                        path.flag = IFlag::Right;
+                        let right = path.node.right.as_ref().map(AsRef::as_ref);
+                        build_iter(IFlag::Left, right, &mut self.paths)
+                    }
+                    IFlag::Right => {
+                        self.paths.pop();
+                    }
                 }
-                IFlag::Center => {
-                    path.flag = IFlag::Right;
-                    let right = path.node.right.as_ref().map(AsRef::as_ref);
-                    build_iter(IFlag::Left, right, &mut self.paths)
-                }
-                IFlag::Right => {
-                    self.paths.pop();
+            } else {
+                match path.flag {
+                    IFlag::Right => {
+                        path.flag = IFlag::Center;
+                        break Some((path.node.key.clone(), path.node.value.clone()));
+                    }
+                    IFlag::Center => {
+                        path.flag = IFlag::Left;
+                        let left = path.node.left.as_ref().map(AsRef::as_ref);
+                        build_iter(IFlag::Right, left, &mut self.paths)
+                    }
+                    IFlag::Left => {
+                        self.paths.pop();
+                    }
                 }
             }
         }
     }
 }
 
+#[derive(Debug)]
 pub struct Range<'a, K, V, R, Q>
 where
     Q: ?Sized,
@@ -627,6 +664,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub struct Reverse<'a, K, V, R, Q>
 where
     Q: ?Sized,
@@ -666,7 +704,7 @@ where
 }
 
 /// Node corresponds to a single entry in Llrb instance.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Node<K, V> {
     key: K,
     value: V,
@@ -734,15 +772,32 @@ impl<K, V> Node<K, V> {
     fn is_black(&self) -> bool {
         self.black
     }
+
+    #[allow(dead_code)]
+    #[cfg(test)]
+    fn pretty_print(&self, mut prefix: String)
+    where
+        K: fmt::Debug,
+        V: fmt::Debug,
+    {
+        match self.black {
+            true => println!("{}(b)<{:?},{:?}>", prefix, self.key, self.value),
+            false => println!("{}(r)<{:?},{:?}>", prefix, self.key, self.value),
+        }
+        prefix.push_str("  ");
+        self.left.as_ref().map(|l| l.pretty_print(prefix.clone()));
+        self.right.as_ref().map(|r| r.pretty_print(prefix.clone()));
+    }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 enum IFlag {
     Left,
     Center,
     Right,
 }
 
+#[derive(Debug)]
 struct Fragment<'a, K, V> {
     flag: IFlag,
     node: &'a Node<K, V>,
