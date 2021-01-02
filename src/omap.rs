@@ -1,107 +1,3 @@
-//! Module provide ordered-map implemented by [OMap] type.
-//!
-//! OMap is implemented using [left-leaning-red-black][wiki-llrb].
-//!
-//! - Each entry in OMap instance correspond to a {Key, Value} pair.
-//! - Parametrised over `key-type` and `value-type`.
-//! - CRUD operations, via create(), set(), get(), delete() api.
-//! - Full table scan, to iterate over all entries.
-//! - Range scan, to iterate between a ``low`` and ``high``.
-//! - Reverse iteration.
-//! - No Durability guarantee.
-//! - Not thread safe.
-//!
-//! [OMap] instance and its API uses Rust's ownership model and borrow
-//! semantics to ensure thread safe operation.
-//!
-//! Constructing a new [OMap] instance:
-//! ```
-//! let index: OMap<i32,i32> = OMap::new("myinstance");
-//! let id = index.id();
-//! assert_eq!(id, "myinstance");
-//! ```
-//!
-//! CRUD operations on [OMap] instance:
-//! ```
-//! let mut index: OMap<String,String> = OMap::new("myinstance");
-//!
-//! index.create("key1".to_string(), "value1".to_string());
-//! index.create("key2".to_string(), "value2".to_string());
-//! index.set("key2".to_string(), "value3".to_string());
-//!
-//! let n = index.len();
-//! assert_eq!(n, 2);
-//!
-//! let value = index.get("key1").unwrap();
-//! assert_eq!(value, "value1".to_string());
-//! let value = index.get("key2").unwrap();
-//! assert_eq!(value, "value3".to_string());
-//!
-//! let old_value = index.delete("key1").unwrap();
-//! assert_eq!(old_value, "value1".to_string());
-//! ```
-//!
-//! Full table scan:
-//! ```
-//! let mut index: OMap<String,String> = OMap::new("myinstance");
-//! index.set("key1".to_string(), "value1".to_string());
-//! index.set("key2".to_string(), "value2".to_string());
-//!
-//! for (i, (key, value)) in index.iter().enumerate() {
-//!     let refkey = format!("key{}", i+1);
-//!     let refval = format!("value{}", i+1);
-//!     assert_eq!(refkey, key);
-//!     assert_eq!(refval, value);
-//! }
-//! ```
-//!
-//! Range scan:
-//! ```
-//! let mut index: OMap<String,String> = OMap::new("myinstance");
-//!
-//! index.set("key1".to_string(), "value1".to_string());
-//! index.set("key2".to_string(), "value2".to_string());
-//! index.set("key3".to_string(), "value3".to_string());
-//!
-//! let low = Bound::Excluded("key1");
-//! let high = Bound::Excluded("key2");
-//! let item = index.range::<str, _>((low, high)).next();
-//! assert_eq!(item, None);
-//!
-//! let low = Bound::Excluded("key1");
-//! let high = Bound::Excluded("key3");
-//! let item = index.range::<str, _>((low, high)).next();
-//! assert_eq!(item, Some(("key2".to_string(), "value2".to_string())));
-//!
-//! let low = Bound::Included("key1");
-//! let high = Bound::Included("key3");
-//! let mut ranger = index.range::<str, _>((low, high));
-//! let item = ranger.next();
-//! assert_eq!(item, Some(("key1".to_string(), "value1".to_string())));
-//! let item = ranger.last();
-//! assert_eq!(item, Some(("key3".to_string(), "value3".to_string())));
-//! ```
-//!
-//! Reverse scan:
-//! ```
-//! use std::ops::Bound;
-//! let mut index: OMap<String,String> = OMap::new("myinstance");
-//!
-//! index.set("key1".to_string(), "value1".to_string());
-//! index.set("key2".to_string(), "value2".to_string());
-//! index.set("key3".to_string(), "value3".to_string());
-//!
-//! let low = Bound::Included("key1");
-//! let high = Bound::Included("key3");
-//! let mut iter = index.reverse::<_, str>((low, high));
-//! let item = iter.next();
-//! assert_eq!(item, Some(("key3".to_string(), "value3".to_string())));
-//! let item = iter.last();
-//! assert_eq!(item, Some(("key1".to_string(), "value1".to_string())));
-//! ```
-//!
-//! [wiki-llrb]: https://en.wikipedia.org/wiki/Left-leaning_red-black_tree
-
 use rand::Rng;
 
 use std::{
@@ -113,31 +9,31 @@ use std::{
 
 use crate::{Error, Result};
 
-/// OMap manage a single instance of in-memory ordered-map using
-/// [left-leaning-red-black][llrb] tree.
+/// Simple ordered-map type using [left-leaning-red-black][llrb] tree.
 ///
+/// Refer package level documentation for brief description.
 /// [llrb]: https://en.wikipedia.org/wiki/Left-leaning_red-black_tree
 pub struct OMap<K, V> {
     root: Option<Box<Node<K, V>>>,
     n_count: usize, // number of entries in the tree.
 }
 
-//impl<K, V> Extend<(K, V)> for OMap<K, V>
-//where
-//    K: Ord,
-//{
-//    fn extend<I>(&mut self, iter: I)
-//    where
-//        I: IntoIterator<Item = (K, V)>,
-//    {
-//        iter.into_iter().for_each(|(key, value)| {
-//            self.set(key, value);
-//        });
-//    }
-//}
+impl<K, V> Extend<(K, V)> for OMap<K, V>
+where
+    K: Ord,
+    V: Clone,
+{
+    fn extend<I>(&mut self, iter: I)
+    where
+        I: IntoIterator<Item = (K, V)>,
+    {
+        iter.into_iter().for_each(|(key, value)| {
+            self.set(key, value);
+        });
+    }
+}
 
 impl<K, V> OMap<K, V> {
-    /// Create an empty instance of OMap.
     pub fn new() -> OMap<K, V> {
         OMap {
             root: None,
@@ -146,9 +42,8 @@ impl<K, V> OMap<K, V> {
     }
 }
 
-/// Maintenance API.
 impl<K, V> OMap<K, V> {
-    /// Return number of entries in this instance.
+    /// Return number of entries in index.
     #[inline]
     pub fn len(&self) -> usize {
         self.n_count
@@ -170,11 +65,14 @@ impl<K, V> OMap<K, V> {
         V: Clone,
     {
         let (mut root, old_value) = Self::do_set(self.root.take(), key, value);
+
         root.set_black();
         self.root = Some(root);
+
         if old_value.is_none() {
             self.n_count += 1;
         }
+
         old_value
     }
 
@@ -205,9 +103,6 @@ impl<K, V> OMap<K, V> {
     /// * From root to any leaf, no consecutive reds allowed in its path.
     /// * Number of blacks should be same under left child and right child.
     /// * Make sure keys are in sorted order.
-    ///
-    /// Additionally return full statistics on the tree. Refer to [`Stats`]
-    /// for more information.
     pub fn validate(&self) -> Result<()>
     where
         K: Ord + fmt::Debug,
@@ -219,7 +114,7 @@ impl<K, V> OMap<K, V> {
 }
 
 impl<K, V> OMap<K, V> {
-    /// Get the value for key.
+    /// Get value for key.
     pub fn get<Q>(&self, key: &Q) -> Option<V>
     where
         K: Borrow<Q>,
@@ -238,6 +133,21 @@ impl<K, V> OMap<K, V> {
     }
 
     /// Return an iterator over all entries in this instance.
+    ///
+    /// ```
+    /// use ppom::OMap;
+    ///
+    /// let mut index: OMap<String,String> = OMap::new();
+    /// index.set("key1".to_string(), "value1".to_string());
+    /// index.set("key2".to_string(), "value2".to_string());
+    ///
+    /// for (i, (key, value)) in index.iter().enumerate() {
+    ///     let refkey = format!("key{}", i+1);
+    ///     let refval = format!("value{}", i+1);
+    ///     assert_eq!(refkey, key);
+    ///     assert_eq!(refval, value);
+    /// }
+    /// ```
     pub fn iter(&self) -> Iter<K, V> {
         let node = self.root.as_ref().map(Deref::deref);
 
@@ -247,7 +157,36 @@ impl<K, V> OMap<K, V> {
         Iter { paths }
     }
 
-    /// Range over all entries from low to high.
+    /// Range over all entries from low to high, specified by `range`.
+    ///
+    /// ```
+    /// use std::ops::Bound;
+    /// use ppom::OMap;
+    ///
+    /// let mut index: OMap<String,String> = OMap::new();
+    ///
+    /// index.set("key1".to_string(), "value1".to_string());
+    /// index.set("key2".to_string(), "value2".to_string());
+    /// index.set("key3".to_string(), "value3".to_string());
+    ///
+    /// let low = Bound::Excluded("key1");
+    /// let high = Bound::Excluded("key2");
+    /// let item = index.range::<str, _>((low, high)).next();
+    /// assert_eq!(item, None);
+    ///
+    /// let low = Bound::Excluded("key1");
+    /// let high = Bound::Excluded("key3");
+    /// let item = index.range::<str, _>((low, high)).next();
+    /// assert_eq!(item, Some(("key2".to_string(), "value2".to_string())));
+    ///
+    /// let low = Bound::Included("key1");
+    /// let high = Bound::Included("key3");
+    /// let mut ranger = index.range::<str, _>((low, high));
+    /// let item = ranger.next();
+    /// assert_eq!(item, Some(("key1".to_string(), "value1".to_string())));
+    /// let item = ranger.last();
+    /// assert_eq!(item, Some(("key3".to_string(), "value3".to_string())));
+    /// ```
     pub fn range<Q, R>(&self, range: R) -> Range<K, V, R, Q>
     where
         K: Borrow<Q>,
@@ -272,7 +211,26 @@ impl<K, V> OMap<K, V> {
         }
     }
 
-    /// Reverse range over all entries from high to low.
+    /// Reverse range over all entries from high to low, specified by `range`.
+    ///
+    /// ```
+    /// use std::ops::Bound;
+    /// use ppom::OMap;
+    ///
+    /// let mut index: OMap<String,String> = OMap::new();
+    ///
+    /// index.set("key1".to_string(), "value1".to_string());
+    /// index.set("key2".to_string(), "value2".to_string());
+    /// index.set("key3".to_string(), "value3".to_string());
+    ///
+    /// let low = Bound::Included("key1");
+    /// let high = Bound::Included("key3");
+    /// let mut iter = index.reverse::<_, str>((low, high));
+    /// let item = iter.next();
+    /// assert_eq!(item, Some(("key3".to_string(), "value3".to_string())));
+    /// let item = iter.last();
+    /// assert_eq!(item, Some(("key1".to_string(), "value1".to_string())));
+    /// ```
     pub fn reverse<R, Q>(&self, range: R) -> Reverse<K, V, R, Q>
     where
         K: Borrow<Q>,
@@ -298,10 +256,11 @@ impl<K, V> OMap<K, V> {
     }
 
     /// Return a random entry from this index.
-    pub fn random<R: Rng>(&self, rng: &mut R) -> Option<(K, V)>
+    pub fn random<R>(&self, rng: &mut R) -> Option<(K, V)>
     where
         K: Clone,
         V: Clone,
+        R: Rng,
     {
         let mut nref = self.root.as_ref().map(Deref::deref)?;
 
@@ -680,7 +639,7 @@ where
 
 impl<'a, K, V, R, Q> Iterator for Reverse<'a, K, V, R, Q>
 where
-    K: Clone + Borrow<Q>,
+    K: Clone + Borrow<Q> + fmt::Debug,
     V: Clone,
     Q: Ord + ?Sized,
     R: RangeBounds<Q>,
@@ -868,6 +827,6 @@ fn find_end<'a, K, V, Q>(
     }
 }
 
-//#[cfg(test)]
-//#[path = "llrb_test.rs"]
-//mod llrb_test;
+#[cfg(test)]
+#[path = "omap_test.rs"]
+mod omap_test;

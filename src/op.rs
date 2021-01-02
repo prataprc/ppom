@@ -3,11 +3,15 @@ use crate::Mdb;
 
 /// Write operations allowed on [Mdb] index.
 ///
-/// There is a corresponding API exposed vi [Mdb] type. For
-/// details refer to corresponding method. `cas` is optional where ever
-/// it is applicable. Additionally, it is possible to set the sequence
-/// number for each write-operation, which is useful to replaying operations
-/// from external entities like Write-Ahead-Logs.
+/// Typically passed to [Mdb::write] method.
+///
+/// * `cas` is optional, when supplied should match with key's current
+///   sequence-number. If key is missing from index, `cas` must be
+///   supplied as ZERO.
+/// * `seqno` is optional, when supplied shall be used as mutation's
+///   sequence number, ignoring index's monotonically increasing
+///   sequence-number. Typically used while replaying operations from
+///   external entities like Write-Ahead-Logs.
 pub enum Write<K, V> {
     /// Refer to Mdb::set.
     Set {
@@ -38,7 +42,6 @@ pub enum Write<K, V> {
 }
 
 impl<K, V> Write<K, V> {
-    /// Create a new `set` op.
     #[inline]
     pub fn set(key: K, value: V) -> Write<K, V> {
         Write::Set {
@@ -49,7 +52,6 @@ impl<K, V> Write<K, V> {
         }
     }
 
-    /// Create a new `insert` op.
     #[inline]
     pub fn insert(key: K, value: V) -> Write<K, V> {
         Write::Ins {
@@ -60,7 +62,6 @@ impl<K, V> Write<K, V> {
         }
     }
 
-    /// Create a new `remove` op.
     #[inline]
     pub fn remove(key: K) -> Write<K, V> {
         Write::Rem {
@@ -70,7 +71,6 @@ impl<K, V> Write<K, V> {
         }
     }
 
-    /// Create a new `delete` op.
     #[inline]
     pub fn delete(key: K) -> Write<K, V> {
         Write::Del {
@@ -80,7 +80,6 @@ impl<K, V> Write<K, V> {
         }
     }
 
-    /// Update op with seqno.
     pub fn set_seqno(self, seqno: u64) -> Write<K, V> {
         use Write::*;
 
@@ -114,7 +113,6 @@ impl<K, V> Write<K, V> {
         }
     }
 
-    /// Update op with cas.
     pub fn set_cas(self, cas: u64) -> Write<K, V> {
         use Write::*;
 
