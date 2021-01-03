@@ -1,8 +1,21 @@
 //! Package implement Persistent Ordered Map.
 //!
-//! There are two types implementing ordered-map, [OMap] and [Mdb], each one
-//! of them tuned for specific use-case. Underneath, both of them are
-//! implemented using [left-leaning-red-black][wiki-llrb].
+//! Quoting from [Wikipedia][pds]:
+//!
+//! > A data structure is *partially persistent* if all versions can be
+//! > accessed but only the newest version can be modified. The data
+//! > structure is *fully persistent* if every version can be both accessed
+//! > and modified. If there is also a meld or merge operation that can
+//! > create a new version from two previous versions, the data structure is
+//! > called *confluently persistent*. > Structures that are not persistent are
+//! > called *ephemeral* data structures.
+//!
+//! Following types implement an ordered-map for specific use cases:
+//!
+//! * [OMap] implements an ephemeral ordered-map, using
+//!   [left-leaning-red-black][wiki-llrb].
+//! * [Mdb] implements partially persistent ordered-map, using
+//!   [left-leaning-red-black][wiki-llrb].
 //!
 //! Simple ordered-map for single threaded use case
 //! -----------------------------------------------
@@ -42,6 +55,8 @@
 //! ```
 //!
 //! [wiki-llrb]: https://en.wikipedia.org/wiki/Left-leaning_red-black_tree
+//! [pds]: https://en.wikipedia.org/wiki/Persistent_data_structure
+//! [im]: https://github.com/bodil/im-rs
 
 use std::{error, fmt, result};
 
@@ -91,13 +106,13 @@ macro_rules! err_at {
 }
 
 mod mdb;
-mod node;
+mod mdb_node;
+mod mdb_op;
 mod omap;
-mod op;
 
 pub use mdb::Mdb;
+pub use mdb_op::Write;
 pub use omap::OMap;
-pub use op::Write;
 
 /// Error variants that are returned by this package's API.
 ///

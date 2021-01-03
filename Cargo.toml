@@ -13,11 +13,11 @@ readme = "README.md"
 edition = "2018"
 
 [dependencies]
-rand = "0.6.4"
 mkit = { path = "../mkit", version = "0.2.0" }
+rand = "0.6.4"
+arbitrary = { version = "0.4.7", features = ["derive"] }
 
 [dev-dependencies]
-arbitrary = { version = "0.4.7", features = ["derive"] }
 
 # [badges]
 # maintenance = { status = "actively-developed" }

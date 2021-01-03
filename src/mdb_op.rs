@@ -1,17 +1,20 @@
+use arbitrary::Arbitrary;
+
 #[allow(unused_imports)]
 use crate::Mdb;
 
 /// Write operations allowed on [Mdb] index.
 ///
-/// Typically passed to [Mdb::write] method.
+/// Passed as argument to [Mdb::write] method.
 ///
-/// * `cas` is optional, when supplied should match with key's current
-///   sequence-number. If key is missing from index, `cas` must be
-///   supplied as ZERO.
-/// * `seqno` is optional, when supplied shall be used as mutation's
-///   sequence number, ignoring index's monotonically increasing
-///   sequence-number. Typically used while replaying operations from
-///   external entities like Write-Ahead-Logs.
+/// * Optional `cas`, when supplied should match with key's current
+///   sequence-number. If key is missing from index, `cas` must be supplied
+///   as ZERO.
+/// * Optional `seqno`, when supplied shall be used as mutation's sequence
+///   number, ignoring index's monotonically increasing sequence-number.
+///   Typically used while replaying operations from external entities like
+///   Write-Ahead-Logs.
+#[derive(Clone, Arbitrary)]
 pub enum Write<K, V> {
     /// Refer to Mdb::set.
     Set {
