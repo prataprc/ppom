@@ -89,15 +89,15 @@ impl<K, V> OMap<K, V> {
         old_value
     }
 
-    /// Delete key from this instance and return its value. If key is
+    /// Remove key from this instance and return its value. If key is
     /// not present, then delete is effectively a no-op.
-    pub fn delete<Q>(&mut self, key: &Q) -> Option<V>
+    pub fn remove<Q>(&mut self, key: &Q) -> Option<V>
     where
         K: Clone + Borrow<Q>,
         V: Clone,
         Q: Ord + ?Sized,
     {
-        let (root, old_value) = match Self::do_delete(self.root.take(), key) {
+        let (root, old_value) = match Self::do_remove(self.root.take(), key) {
             (None, old_value) => (None, old_value),
             (Some(mut root), old_value) => {
                 root.set_black();
@@ -333,7 +333,7 @@ impl<K, V> OMap<K, V> {
         }
     }
 
-    fn do_delete<Q>(node: Option<Box<Node<K, V>>>, key: &Q) -> Delete<K, V>
+    fn do_remove<Q>(node: Option<Box<Node<K, V>>>, key: &Q) -> Delete<K, V>
     where
         K: Clone + Borrow<Q>,
         V: Clone,
@@ -352,7 +352,7 @@ impl<K, V> OMap<K, V> {
                 if ok && !is_red(node.left.as_ref().unwrap().as_left_ref()) {
                     node = move_red_left(node);
                 }
-                let (left, old_value) = Self::do_delete(node.left.take(), key);
+                let (left, old_value) = Self::do_remove(node.left.take(), key);
                 node.left = left;
                 (Some(fixup(node)), old_value)
             }
@@ -372,10 +372,10 @@ impl<K, V> OMap<K, V> {
 
             if !node.key.borrow().lt(key) {
                 // node == key
-                let (right, mut res_node) = Self::delete_min(node.right.take());
+                let (right, mut res_node) = Self::remove_min(node.right.take());
                 node.right = right;
                 if res_node.is_none() {
-                    panic!("do_delete(): fatal logic, call the programmer");
+                    panic!("do_remove(): fatal logic, call the programmer");
                 }
                 let subdel = res_node.take().unwrap();
                 let mut newnode = Box::new(subdel.clone_detach());
@@ -384,14 +384,14 @@ impl<K, V> OMap<K, V> {
                 newnode.black = node.black;
                 (Some(fixup(newnode)), Some(node.value.clone()))
             } else {
-                let (right, old_value) = Self::do_delete(node.right.take(), key);
+                let (right, old_value) = Self::do_remove(node.right.take(), key);
                 node.right = right;
                 (Some(fixup(node)), old_value)
             }
         }
     }
 
-    fn delete_min(node: Option<Box<Node<K, V>>>) -> Delmin<K, V> {
+    fn remove_min(node: Option<Box<Node<K, V>>>) -> Delmin<K, V> {
         if node.is_none() {
             return (None, None);
         }
@@ -403,7 +403,7 @@ impl<K, V> OMap<K, V> {
         if !is_red(left) && !is_red(left.unwrap().as_left_ref()) {
             node = move_red_left(node);
         }
-        let (left, old_node) = Self::delete_min(node.left.take());
+        let (left, old_node) = Self::remove_min(node.left.take());
         node.left = left;
         (Some(fixup(node)), old_node)
     }

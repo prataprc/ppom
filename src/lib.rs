@@ -9,7 +9,7 @@
 //!
 //! - Each entry in OMap instance correspond to a {Key, Value} pair.
 //! - Parametrised over `key-type` and `value-type`.
-//! - CRUD operations, via set(), get(), delete() api.
+//! - CRUD operations, via set(), get(), remove() api.
 //! - Full table scan, to iterate over all entries.
 //! - Range scan, to iterate between a ``low`` and ``high``.
 //! - Reverse iteration.
@@ -37,7 +37,7 @@
 //! let value = index.get("key2").unwrap();
 //! assert_eq!(value, "value2".to_string());
 //!
-//! let old_value = index.delete("key1").unwrap();
+//! let old_value = index.remove("key1").unwrap();
 //! assert_eq!(old_value, "value1".to_string());
 //! ```
 //!
