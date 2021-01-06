@@ -49,12 +49,12 @@ impl<K, V, D> Node<K, V, D> {
 
 impl<K, V, D> Node<K, V, D> {
     #[inline]
-    pub fn as_left_deref(&self) -> Option<&Node<K, V, D>> {
+    pub fn as_left_ref(&self) -> Option<&Node<K, V, D>> {
         self.left.as_ref().map(Deref::deref)
     }
 
     #[inline]
-    pub fn as_right_deref(&self) -> Option<&Node<K, V, D>> {
+    pub fn as_right_ref(&self) -> Option<&Node<K, V, D>> {
         self.right.as_ref().map(Deref::deref)
     }
 

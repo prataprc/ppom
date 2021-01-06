@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 #[test]
 fn test_omap() {
     let seed: u128 = random();
-    // let seed: u128 = 197582876559945180918999591639253259379;
+    // let seed: u128 = 46462177783710469322936477079324309004;
     println!("test_omap {}", seed);
     let mut rng = SmallRng::from_seed(seed.to_le_bytes());
 
@@ -21,7 +21,7 @@ fn test_omap() {
         let bytes = rng.gen::<[u8; 32]>();
         let mut uns = Unstructured::new(&bytes);
 
-        let op = uns.arbitrary().unwrap();
+        let op: Op<u8, u64> = uns.arbitrary().unwrap();
         // println!("op -- {:?}", op);
         match op {
             Op::Len => {

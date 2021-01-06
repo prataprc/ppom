@@ -37,7 +37,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::{mdb_node::Node, mdb_op::Write, Error, Result};
+use crate::{node::Node, op::Write, Error, Result};
 
 pub const MAX_TREE_DEPTH: usize = 100;
 
@@ -677,72 +677,59 @@ impl<K, V, D> Inner<K, V, D> {
             (None, Some(_)) => err_at!(InvalidCAS, msg: "invalid cas for missing set")?,
         };
 
-        let try_rotate_right = |node: Node<K, V, D>| -> Node<K, V, D> {
-            match is_red(node.as_left_deref()) {
-                true => rotate_right(node),
-                false => node,
-            }
-        };
-
-        let try_move_red_right = |node: Node<K, V, D>| -> Node<K, V, D> {
-            match node.as_right_deref() {
-                r @ Some(_) if !is_red(r) && !is_red(r.unwrap().as_left_deref()) => {
-                    move_red_right(node)
-                }
-                Some(_) | None => node,
-            }
-        };
-
         let cas_ok = cas.is_none() || cas.unwrap() == node.to_seqno();
 
         let (root, old) = match node.as_key().borrow().cmp(key) {
-            Ordering::Greater if node.left.is_none() && cas_ok => (Some(node), None),
-            Ordering::Greater if node.left.is_none() => {
-                err_at!(InvalidCAS, msg: "{} != {:?}", node.to_seqno(), cas)?
-            }
+            Ordering::Greater if node.left.is_none() => (Some(node), None),
             Ordering::Greater => {
-                {
-                    let left = node.as_left_deref();
-                    if !is_red(left) && !is_red(left.unwrap().as_left_deref()) {
-                        node = move_red_left(node)
-                    }
+                let left = node.as_left_ref();
+                if !is_red(left) && !is_red(left.unwrap().as_left_ref()) {
+                    node = move_red_left(node)
                 }
 
-                let left = node.as_left_deref();
-                let (root, old) = self.do_remove(left, op)?.into_res();
-                node.left = root;
+                let (left, old) = self.do_remove(node.as_left_ref(), op)?.into_res();
+                node.left = left;
                 (Some(fixup(node)), old)
             }
-            Ordering::Less => {
-                node = try_move_red_right(try_rotate_right(node));
+            _ => {
+                if is_red(node.as_left_ref()) {
+                    node = rotate_right(node);
+                }
 
-                let right = node.as_right_deref();
-                let (root, old) = self.do_remove(right, op)?.into_res();
-                node.right = root;
-                (Some(fixup(node)), old)
-            }
-            Ordering::Equal if node.right.is_none() && cas_ok => {
-                node = try_rotate_right(node);
-                (None, Some(node.entry.clone()))
-            }
-            Ordering::Equal if node.right.is_none() => {
-                err_at!(InvalidCAS, msg: "{} != {:?}", node.to_seqno(), cas)?
-            }
-            Ordering::Equal if cas_ok => {
-                node = try_move_red_right(try_rotate_right(node));
-                let [right, sub_node] = self.do_remove_min(node.as_right_deref());
-                node.right = right.map(Arc::new);
-                let mut sub_node = match sub_node {
-                    Some(sub_node) => sub_node,
-                    None => return err_at!(Fatal, msg: "call the programmer"),
-                };
-                sub_node.left = node.left;
-                sub_node.right = node.right;
-                sub_node.black = node.black;
-                (Some(fixup(sub_node)), Some(node.entry.clone()))
-            }
-            Ordering::Equal => {
-                err_at!(InvalidCAS, msg: "{} != {:?}", node.to_seqno(), cas)?
+                if node.as_key().borrow().eq(key) && !cas_ok {
+                    err_at!(InvalidCAS, msg: "{} != {:?}", node.to_seqno(), cas)?;
+                }
+
+                if !node.as_key().borrow().lt(key) && node.right.is_none() {
+                    (None, Some(node.entry.clone()))
+                } else {
+                    node = match node.as_right_ref() {
+                        r @ Some(_)
+                            if !is_red(r) && !is_red(r.unwrap().as_left_ref()) =>
+                        {
+                            move_red_right(node)
+                        }
+                        Some(_) | None => node,
+                    };
+
+                    if !node.as_key().borrow().lt(key) {
+                        let [right, sub_node] = self.do_remove_min(node.as_right_ref());
+                        node.right = right.map(Arc::new);
+                        let mut sub_node = match sub_node {
+                            Some(sub_node) => sub_node,
+                            None => return err_at!(Fatal, msg: "call the programmer"),
+                        };
+                        sub_node.left = node.left;
+                        sub_node.right = node.right;
+                        sub_node.black = node.black;
+                        (Some(fixup(sub_node)), Some(node.entry.clone()))
+                    } else {
+                        let right = node.as_right_ref();
+                        let (root, old) = self.do_remove(right, op)?.into_res();
+                        node.right = root;
+                        (Some(fixup(node)), old)
+                    }
+                }
             }
         };
         let root = root.map(Arc::new);
@@ -779,27 +766,27 @@ impl<K, V, D> Inner<K, V, D> {
 
         let (root, old) = match node.as_key().borrow().cmp(key) {
             Ordering::Greater => {
-                let left = node.as_left_deref();
+                let left = node.as_left_ref();
                 let (root, old) = self.do_delete(left, op)?.into_res();
                 node.left = root;
-                (Some(walkuprot_23(node)), old)
+                (walkuprot_23(node), old)
             }
             Ordering::Less => {
-                let right = node.as_right_deref();
+                let right = node.as_right_ref();
                 let (root, old) = self.do_delete(right, op)?.into_res();
                 node.right = root;
-                (Some(walkuprot_23(node)), old)
+                (walkuprot_23(node), old)
             }
             Ordering::Equal if cas_ok => {
                 let old = node.entry.clone();
                 node.delete(seqno);
-                (Some(walkuprot_23(node)), Some(old))
+                (walkuprot_23(node), Some(old))
             }
             Ordering::Equal => {
                 err_at!(InvalidCAS, msg: "{} != {:?}", node.to_seqno(), cas)?
             }
         };
-        let root = root.map(Arc::new);
+        let root = Some(Arc::new(root));
 
         Ok(Ir::Res { root, old })
     }
@@ -819,12 +806,12 @@ impl<K, V, D> Inner<K, V, D> {
             return [None, Some(node)];
         }
 
-        let left = node.as_left_deref();
+        let left = node.as_left_ref();
 
-        if !is_red(left) && !is_red(left.unwrap().as_left_deref()) {
+        if !is_red(left) && !is_red(left.unwrap().as_left_ref()) {
             node = move_red_left(node);
         }
-        let [left, sub_node] = self.do_remove_min(node.as_left_deref());
+        let [left, sub_node] = self.do_remove_min(node.as_left_ref());
         node.left = left.map(Arc::new);
         [Some(fixup(node)), sub_node]
     }
@@ -937,14 +924,14 @@ where
     V: Clone,
     D: Clone,
 {
-    if is_red(node.as_right_deref()) && !is_red(node.as_left_deref()) {
+    if is_red(node.as_right_ref()) && !is_red(node.as_left_ref()) {
         node = rotate_left(node)
     }
-    let left = node.as_left_deref();
-    if is_red(left) && is_red(left.unwrap().as_left_deref()) {
+    let left = node.as_left_ref();
+    if is_red(left) && is_red(left.unwrap().as_left_ref()) {
         node = rotate_right(node);
     }
-    if is_red(node.as_left_deref()) && is_red(node.as_right_deref()) {
+    if is_red(node.as_left_ref()) && is_red(node.as_right_ref()) {
         flip(&mut node)
     }
     node
@@ -997,7 +984,7 @@ where
     V: Clone,
     D: Clone,
 {
-    let old_left: &Node<K, V, D> = node.left.as_ref().map(|r| r.borrow()).unwrap();
+    let old_left: &Node<K, V, D> = node.left.as_ref().map(|l| l.borrow()).unwrap();
     if is_black(Some(old_left)) {
         panic!("rotateright(): rotate black link ? call-the-programmer")
     }
@@ -1049,14 +1036,16 @@ where
     V: Clone,
     D: Clone,
 {
-    if is_red(node.as_right_deref()) {
+    if is_red(node.as_right_ref()) {
         node = rotate_left(node)
     }
-    let left = node.as_left_deref();
-    if is_red(left) && is_red(left.unwrap().as_left_deref()) {
+
+    let left = node.as_left_ref();
+    if is_red(left) && is_red(left.unwrap().as_left_ref()) {
         node = rotate_right(node)
     }
-    if is_red(node.as_left_deref()) && is_red(node.as_right_deref()) {
+
+    if is_red(node.as_left_ref()) && is_red(node.as_right_ref()) {
         flip(&mut node)
     }
     node
@@ -1070,7 +1059,7 @@ where
 {
     flip(&mut node);
 
-    if is_red(node.right.as_ref().unwrap().as_left_deref()) {
+    if is_red(node.right.as_ref().unwrap().as_left_ref()) {
         let right = node.right.take().unwrap();
         let newr = {
             let rr: &Node<K, V, D> = right.borrow();
@@ -1091,7 +1080,7 @@ where
 {
     flip(&mut node);
 
-    if is_red(node.left.as_ref().unwrap().as_left_deref()) {
+    if is_red(node.left.as_ref().unwrap().as_left_ref()) {
         node = rotate_right(node);
         flip(&mut node);
     }
@@ -1108,8 +1097,8 @@ where
 {
     match node {
         Some(nref) => match nref.as_key().borrow().cmp(key) {
-            Ordering::Less => get(nref.as_right_deref(), key),
-            Ordering::Greater => get(nref.as_left_deref(), key),
+            Ordering::Less => get(nref.as_right_ref(), key),
+            Ordering::Greater => get(nref.as_left_ref(), key),
             Ordering::Equal => Ok(nref.entry.clone()),
         },
         None => err_at!(KeyNotFound, msg: "get missing key"),
@@ -1139,19 +1128,19 @@ where
 
     // confirm sort order in the tree.
     let (left, right) = {
-        if let Some(left) = node.as_left_deref() {
+        if let Some(left) = node.as_left_ref() {
             if left.as_key().ge(node.as_key()) {
                 let (lk, nk) = (left.as_key(), node.as_key());
                 err_at!(Fatal, msg: "Mdb left:{:?}, parent:{:?}", lk, nk)?;
             }
         }
-        if let Some(right) = node.as_right_deref() {
+        if let Some(right) = node.as_right_ref() {
             if right.as_key().le(node.as_key()) {
                 let (rk, nk) = (right.as_key(), node.as_key());
                 err_at!(Fatal, msg: "Mdb right:{:?}, parent:{:?}", rk, nk)?;
             }
         }
-        (node.as_left_deref(), node.as_right_deref())
+        (node.as_left_ref(), node.as_right_ref())
     };
 
     if !red {
