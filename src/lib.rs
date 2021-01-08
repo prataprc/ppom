@@ -16,7 +16,7 @@
 //!   Provides shared-ownership, but not thread-safe.
 //! * [arc::OMap] implement *fully persistent* ordered-map using *llrb* tree.
 //!   Provides shared-ownership and thread-safe.
-//! * [Mdb] implements partially persistent ordered-map, using
+//! * [Mdb] implements *partially persistent* ordered-map, using
 //!   [left-leaning-red-black][wiki-llrb]. This variant is most useful for
 //!   database applications.
 //!

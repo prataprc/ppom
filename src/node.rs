@@ -87,6 +87,6 @@ impl<K, V, D> From<db::Entry<K, V, D>> for Node<K, V, D> {
     }
 }
 
-//#[cfg(test)]
-//#[path = "mdb_node_test.rs"]
-//mod mdb_node_test;
+#[cfg(test)]
+#[path = "node_test.rs"]
+mod node_test;
