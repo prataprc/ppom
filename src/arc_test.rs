@@ -3,26 +3,61 @@ use rand::{prelude::random, rngs::SmallRng, Rng, SeedableRng};
 
 use super::*;
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, ops::Bound, thread};
 
 #[test]
-fn test_omap() {
+fn test_arc_omap() {
     let seed: u128 = random();
     // let seed: u128 = 46462177783710469322936477079324309004;
-    println!("test_omap {}", seed);
-    let mut rng = SmallRng::from_seed(seed.to_le_bytes());
+    println!("test_arc_omap {}", seed);
 
     let mut index: OMap<u8, u64> = OMap::new();
     let mut btmap: BTreeMap<u8, u64> = BTreeMap::new();
 
+    for _i in 0..1_000_000 {
+        let (key, val): (u8, u64) = (random(), random());
+        btmap.insert(key, val);
+        index = index.set(key, val);
+    }
+
+    println!("initial load len:{}/{}", index.len(), btmap.len());
+
+    let mut handles = vec![];
+    for j in 0..16 {
+        let (a, b) = (index.clone(), btmap.clone());
+        let h = thread::spawn(move || do_test(j, seed + (j as u128), 1_000_000, a, b));
+        handles.push(h);
+    }
+
+    for handle in handles.into_iter() {
+        handle.join().unwrap();
+    }
+
+    assert_eq!(index.len(), btmap.len());
+
+    for ((a, b), (x, y)) in index.iter().zip(btmap.iter()) {
+        assert_eq!(a, *x);
+        assert_eq!(b, *y, "for key {}", a);
+    }
+}
+
+fn do_test(
+    _j: usize,
+    seed: u128,
+    n: usize,
+    mut index: OMap<u8, u64>,
+    mut btmap: BTreeMap<u8, u64>,
+) {
+    let mut rng = SmallRng::from_seed(seed.to_le_bytes());
+
     let mut counts = [0_usize; 10];
 
-    for _i in 0..1_000_000 {
+    for _i in 0..n {
         let bytes = rng.gen::<[u8; 32]>();
         let mut uns = Unstructured::new(&bytes);
 
         let op: Op<u8, u64> = uns.arbitrary().unwrap();
-        // println!("op -- {:?}", op);
+        // println!("{}-op -- {:?}", _j, op);
         match op {
             Op::Len => {
                 counts[0] += 1;
@@ -34,21 +69,39 @@ fn test_omap() {
             }
             Op::Set(key, val) => {
                 counts[2] += 1;
-                match (index.set(key, val), btmap.insert(key, val)) {
+                let res_bt = btmap.insert(key, val);
+                let new_index = index.set(key, val);
+                match (index.get(&key), res_bt) {
                     (None, None) => (),
-                    (Some(v), Some(r)) => assert_eq!(v, r, "for key {}", key),
-                    (None, Some(_)) => panic!("set no key {} in omap", key),
-                    (Some(_), None) => panic!("set no key {} in btree", key),
+                    (Some(v), Some(r)) => assert_eq!(v, r, "old val for key {}", key),
+                    (None, Some(_)) => panic!("no key {} in omap", key),
+                    (Some(_), None) => panic!("no key {} in btree", key),
                 }
+                match (new_index.get(&key), btmap.get(&key)) {
+                    (None, None) => unreachable!(),
+                    (Some(v), Some(r)) => assert_eq!(v, *r, "for key {}", key),
+                    (None, Some(_)) => panic!("no key {} in omap", key),
+                    (Some(_), None) => panic!("no key {} in btree", key),
+                }
+                index = new_index;
             }
             Op::Remove(key) => {
                 counts[3] += 1;
-                match (index.remove(&key), btmap.remove(&key)) {
+                let res_bt = btmap.remove(&key);
+                let new_index = index.remove(&key);
+                match (index.get(&key), res_bt) {
                     (None, None) => (),
-                    (Some(v), Some(r)) => assert_eq!(v, r, "for key {}", key),
-                    (None, Some(_)) => panic!("remove no key {} in omap", key),
-                    (Some(_), None) => panic!("remove no key {} in btree", key),
+                    (Some(v), Some(r)) => assert_eq!(v, r, "for remove key {}", key),
+                    (None, Some(_)) => panic!("no key {} in omap", key),
+                    (Some(_), None) => panic!("no key {} in btree", key),
                 }
+                match (new_index.get(&key), btmap.get(&key)) {
+                    (None, None) => (),
+                    (Some(_), Some(_)) => unreachable!(),
+                    (None, Some(_)) => unreachable!(),
+                    (Some(_), None) => unreachable!(),
+                }
+                index = new_index;
             }
             Op::Validate => {
                 counts[4] += 1;
@@ -96,11 +149,6 @@ fn test_omap() {
                 let a: Vec<(u8, u64)> = index.reverse(r.clone()).collect();
                 assert_eq!(a.len(), 0, "reverse {:?}", r);
             }
-            Op::Extend(items) => {
-                counts[9] += 1;
-                index.extend(items.clone());
-                btmap.extend(items.clone())
-            }
         }
     }
 
@@ -122,7 +170,6 @@ enum Op<K, V> {
     Iter,
     Range((Limit<K>, Limit<K>)),
     Reverse((Limit<K>, Limit<K>)),
-    Extend(Vec<(K, V)>),
 }
 
 #[derive(Debug, Arbitrary, Eq, PartialEq)]

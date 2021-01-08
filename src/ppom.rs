@@ -15,24 +15,10 @@ use crate::{Error, Result};
 /// Refer package level documentation for brief description.
 ///
 /// [llrb]: https://en.wikipedia.org/wiki/Left-leaning_red-black_tree
+#[derive(Clone)]
 pub struct OMap<K, V> {
     root: Option<Ref<Node<K, V>>>,
     n_count: usize, // number of entries in the tree.
-}
-
-impl<K, V> Extend<(K, V)> for OMap<K, V>
-where
-    K: Ord + Clone,
-    V: Clone,
-{
-    fn extend<I>(&mut self, iter: I)
-    where
-        I: IntoIterator<Item = (K, V)>,
-    {
-        iter.into_iter().for_each(|(key, value)| {
-            self.set(key, value);
-        });
-    }
 }
 
 impl<K, V> OMap<K, V> {
@@ -73,45 +59,53 @@ impl<K, V> OMap<K, V> {
 impl<K, V> OMap<K, V> {
     /// Set value for key. If there is an existing entry for key,
     /// overwrite the old value with new value and return the old value.
-    pub fn set(&mut self, key: K, value: V) -> Option<V>
+    pub fn set(&self, key: K, value: V) -> Self
     where
         K: Ord + Clone,
         V: Clone,
     {
         let root = self.root.as_ref().map(Borrow::borrow);
-        let (mut root, old) = Self::do_set(root, key, value);
+        let (mut root, is_old) = Self::do_set(root, key, value);
 
         root.set_black();
-        self.root = Some(Ref::new(root));
 
-        if old.is_none() {
-            self.n_count += 1;
-        }
-
-        old
+        let val = OMap {
+            root: Some(Ref::new(root)),
+            n_count: if is_old {
+                self.n_count
+            } else {
+                self.n_count + 1
+            },
+        };
+        val
     }
 
     /// Remove key from this instance and return its value. If key is
     /// not present, then delete is effectively a no-op.
-    pub fn remove<Q>(&mut self, key: &Q) -> Option<V>
+    pub fn remove<Q>(&self, key: &Q) -> Self
     where
         K: Clone + Borrow<Q>,
         V: Clone,
         Q: Ord + ?Sized,
     {
         let root = self.root.as_ref().map(Borrow::borrow);
-        let (root, old) = match Self::do_remove(root, key) {
-            (None, old) => (None, old),
-            (Some(mut root), old) => {
+        let (root, is_old) = match Self::do_remove(root, key) {
+            (None, is_old) => (None, is_old),
+            (Some(mut root), is_old) => {
                 root.set_black();
-                (Some(Ref::new(root)), old)
+                (Some(Ref::new(root)), is_old)
             }
         };
-        self.root = root;
-        if old.is_some() {
-            self.n_count -= 1;
-        }
-        old
+
+        let val = OMap {
+            root,
+            n_count: if is_old {
+                self.n_count - 1
+            } else {
+                self.n_count
+            },
+        };
+        val
     }
 
     /// Validate LLRB tree with following rules:
@@ -302,41 +296,38 @@ impl<K, V> OMap<K, V> {
     }
 }
 
-type Upsert<K, V> = (Node<K, V>, Option<V>);
-type Remove<K, V> = (Option<Node<K, V>>, Option<V>);
 type Remmin<K, V> = [Option<Node<K, V>>; 2];
 
 impl<K, V> OMap<K, V> {
-    fn do_set(node: Option<&Node<K, V>>, key: K, value: V) -> Upsert<K, V>
+    fn do_set(node: Option<&Node<K, V>>, key: K, value: V) -> (Node<K, V>, bool)
     where
         K: Ord + Clone,
         V: Clone,
     {
         let mut node = match node {
             Some(node) => node.clone(),
-            None => return (Node::new(key, value, false /*black*/), None),
+            None => return (Node::new(key, value, false /*black*/), false),
         };
 
         match node.key.cmp(&key) {
             Ordering::Greater => {
-                let (left, o) = Self::do_set(node.as_left_ref(), key, value);
+                let (left, is_old) = Self::do_set(node.as_left_ref(), key, value);
                 node.left = Some(Ref::new(left));
-                (walkuprot_23(node), o)
+                (walkuprot_23(node), is_old)
             }
             Ordering::Less => {
-                let (right, o) = Self::do_set(node.as_right_ref(), key, value);
+                let (right, is_old) = Self::do_set(node.as_right_ref(), key, value);
                 node.right = Some(Ref::new(right));
-                (walkuprot_23(node), o)
+                (walkuprot_23(node), is_old)
             }
             Ordering::Equal => {
-                let old_value = node.value.clone();
                 node.set_value(value);
-                (walkuprot_23(node), Some(old_value))
+                (walkuprot_23(node), true)
             }
         }
     }
 
-    fn do_remove<Q>(node: Option<&Node<K, V>>, key: &Q) -> Remove<K, V>
+    fn do_remove<Q>(node: Option<&Node<K, V>>, key: &Q) -> (Option<Node<K, V>>, bool)
     where
         K: Clone + Borrow<Q>,
         V: Clone,
@@ -344,26 +335,26 @@ impl<K, V> OMap<K, V> {
     {
         let mut node = match node {
             Some(node) => node.clone(),
-            None => return (None, None),
+            None => return (None, false),
         };
 
         match node.key.borrow().cmp(key) {
-            Ordering::Greater if node.left.is_none() => (Some(node), None),
+            Ordering::Greater if node.left.is_none() => (Some(node), false),
             Ordering::Greater => {
                 let ok = !is_red(node.as_left_ref());
                 if ok && !is_red(node.left.as_ref().unwrap().as_left_ref()) {
                     node = move_red_left(node);
                 }
-                let (left, old) = Self::do_remove(node.as_left_ref(), key);
+                let (left, is_old) = Self::do_remove(node.as_left_ref(), key);
                 node.left = left.map(Ref::new);
-                (Some(fixup(node)), old)
+                (Some(fixup(node)), is_old)
             }
             _ => {
                 if is_red(node.as_left_ref()) {
                     node = rotate_right(node);
                 }
                 if !node.key.borrow().lt(key) && node.right.is_none() {
-                    (None, Some(node.value.clone()))
+                    (None, true)
                 } else {
                     node = match node.as_right_ref() {
                         r @ Some(_)
@@ -384,11 +375,11 @@ impl<K, V> OMap<K, V> {
                         sub_node.left = node.left;
                         sub_node.right = node.right;
                         sub_node.black = node.black;
-                        (Some(fixup(sub_node)), Some(node.value.clone()))
+                        (Some(fixup(sub_node)), true)
                     } else {
-                        let (right, old) = Self::do_remove(node.as_right_ref(), key);
+                        let (right, is_old) = Self::do_remove(node.as_right_ref(), key);
                         node.right = right.map(Ref::new);
-                        (Some(fixup(node)), old)
+                        (Some(fixup(node)), is_old)
                     }
                 }
             }
@@ -930,7 +921,3 @@ fn find_end<'a, K, V, Q>(
         }
     }
 }
-
-//#[cfg(test)]
-//#[path = "omap_test.rs"]
-//mod omap_test;

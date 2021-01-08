@@ -9,7 +9,7 @@ use std::{
 
 use crate::{Error, Result};
 
-/// Simple ordered-map type using [left-leaning-red-black][llrb] tree.
+/// Ephemeral ordered-map type using [left-leaning-red-black][llrb] tree.
 ///
 /// Refer package level documentation for brief description.
 ///

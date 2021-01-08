@@ -12,13 +12,33 @@
 //!
 //! Following types implement an ordered-map for specific use cases:
 //!
-//! * [OMap] implements an ephemeral ordered-map, using
-//!   [left-leaning-red-black][wiki-llrb].
+//! * [rc::OMap] implement *fully persistent* ordered-map using *llrb* tree.
+//!   Provides shared-ownership, but not thread-safe.
+//! * [arc::OMap] implement *fully persistent* ordered-map using *llrb* tree.
+//!   Provides shared-ownership and thread-safe.
 //! * [Mdb] implements partially persistent ordered-map, using
-//!   [left-leaning-red-black][wiki-llrb].
+//!   [left-leaning-red-black][wiki-llrb]. This variant is most useful for
+//!   database applications.
 //!
-//! Simple ordered-map for single threaded use case
-//! -----------------------------------------------
+//! Ownership and Cloning
+//! ---------------------
+//!
+//! Cloning `arc::OMap` and `rc::OMap` is cheap, it creates a shared ownership
+//! of the underlying tree. This is great for applications requiring
+//! shared-ownership, but at the cost of copy-on-write for every mutation, like
+//! set and remove, in the map.
+//!
+//! Thread Safety
+//! -------------
+//!
+//! `arc::OMap` is thread safe through `Arc`. To trade-off thread-safety for
+//! performance use `rc::OMap` type, which is same as `arc::OMap` type except
+//! for using `std::rc::Rc` instead of `std::sync::Arc` for shared ownership.
+//! That is, `Send` and `Sync` traits are not available for `rc::OMap` type
+//! while it is available for `arc::OMap` type.
+//!
+//! Ephemeral ordered-map
+//! ---------------------
 //!
 //! - Each entry in OMap instance correspond to a {Key, Value} pair.
 //! - Parametrised over `key-type` and `value-type`.
@@ -42,16 +62,32 @@
 //! index.set("key1".to_string(), "value1".to_string());
 //! index.set("key2".to_string(), "value2".to_string());
 //!
-//! let n = index.len();
-//! assert_eq!(n, 2);
+//! assert_eq!(index.len(), 2);
+//! assert_eq!(index.get("key1").unwrap(), "value1".to_string());
+//! assert_eq!(index.remove("key1").unwrap(), "value1".to_string());
+//! ```
 //!
-//! let value = index.get("key1").unwrap();
-//! assert_eq!(value, "value1".to_string());
-//! let value = index.get("key2").unwrap();
-//! assert_eq!(value, "value2".to_string());
+//! Fully persistent ordered-map
+//! ----------------------------
 //!
-//! let old_value = index.remove("key1").unwrap();
-//! assert_eq!(old_value, "value1".to_string());
+//! Supports all the features as that of ephemeral OMap, with slight difference
+//! in call pattern:
+//!
+//! ```
+//! use ppom::rc::OMap;
+//!
+//! let mut index: OMap<String,String> = OMap::new();
+//! assert_eq!(index.len(), 0);
+//! assert_eq!(index.is_empty(), true);
+//!
+//! index = index.set("key1".to_string(), "value1".to_string());
+//! index = index.set("key2".to_string(), "value2".to_string());
+//!
+//! assert_eq!(index.len(), 2);
+//! assert_eq!(index.get("key1").unwrap(), "value1".to_string());
+//! let new_index = index.remove("key1");
+//! assert_eq!(index.get("key1").unwrap(), "value1".to_string());
+//! assert_eq!(new_index.get("key1").is_none(), true);
 //! ```
 //!
 //! [wiki-llrb]: https://en.wikipedia.org/wiki/Left-leaning_red-black_tree
@@ -105,6 +141,7 @@ macro_rules! err_at {
     }};
 }
 
+pub mod arc;
 mod mdb;
 mod node;
 mod omap;
