@@ -121,7 +121,12 @@ impl<K, V> OMap<K, V> {
         K: Ord + fmt::Debug,
     {
         let root = self.root.as_ref().map(Deref::deref);
-        Self::validate_tree(root, is_red(root), 0 /*n_blacks*/, 1 /*depth*/)?;
+        let (n_count, n_blacks, depth) = (0, 0, 1);
+        let (n_count, _) =
+            Self::validate_tree(root, is_red(root), n_count, n_blacks, depth)?;
+        if n_count != self.n_count {
+            err_at!(Fatal, msg: "mismatch in count {} != {}", n_count, self.n_count)?;
+        }
         Ok(())
     }
 }
@@ -413,16 +418,18 @@ impl<K, V> OMap<K, V> {
     fn validate_tree(
         node: Option<&Node<K, V>>,
         fromred: bool,
+        mut n_count: usize,
         mut n_blacks: usize,
         depth: usize,
-    ) -> Result<usize>
+    ) -> Result<(usize, usize)>
     where
         K: Ord + fmt::Debug,
     {
         let node = match node {
             Some(node) => node,
-            None => return Ok(n_blacks),
+            None => return Ok((n_count, n_blacks)),
         };
+        n_count += 1;
 
         let red = is_red(Some(node));
         if fromred && red {
@@ -434,10 +441,11 @@ impl<K, V> OMap<K, V> {
         }
 
         let (left, right) = (node.as_left_ref(), node.as_right_ref());
-        let lblacks = Self::validate_tree(left, red, n_blacks, depth + 1)?;
-        let rblacks = Self::validate_tree(right, red, n_blacks, depth + 1)?;
-        if lblacks != rblacks {
-            err_at!(Fatal, msg: "unbalanced blacks {} {}", lblacks, rblacks)?;
+        let (n_count, lb) = Self::validate_tree(left, red, n_count, n_blacks, depth + 1)?;
+        let (n_count, rb) =
+            Self::validate_tree(right, red, n_count, n_blacks, depth + 1)?;
+        if lb != rb {
+            err_at!(Fatal, msg: "unbalanced blacks {} {}", lb, rb)?;
         }
 
         if let Some(left) = left {
@@ -451,7 +459,7 @@ impl<K, V> OMap<K, V> {
             }
         }
 
-        Ok(lblacks)
+        Ok((n_count, lb))
     }
 }
 

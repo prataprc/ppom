@@ -128,11 +128,6 @@ impl<K, V, D> Mdb<K, V, D> {
     pub fn to_name(&self) -> String {
         self.name.clone()
     }
-
-    /// Drop this index.
-    pub fn close(self) -> Result<()> {
-        Ok(())
-    }
 }
 
 /// Result type for all write operations into index.
@@ -354,12 +349,12 @@ impl<K, V, D> Mdb<K, V, D> {
         inner.get(key)
     }
 
-    pub fn iter(&mut self) -> Result<Iter<K, V, D>> {
+    pub fn iter(&self) -> Result<Iter<K, V, D>> {
         let inner = Arc::clone(&self.inner.read());
         inner.iter()
     }
 
-    pub fn range<R, Q>(&mut self, range: R) -> Result<Range<K, V, D, R, Q>>
+    pub fn range<R, Q>(&self, range: R) -> Result<Range<K, V, D, R, Q>>
     where
         K: Borrow<Q>,
         R: RangeBounds<Q>,
@@ -369,7 +364,7 @@ impl<K, V, D> Mdb<K, V, D> {
         inner.range(range)
     }
 
-    pub fn reverse<R, Q>(&mut self, range: R) -> Result<Reverse<K, V, D, R, Q>>
+    pub fn reverse<R, Q>(&self, range: R) -> Result<Reverse<K, V, D, R, Q>>
     where
         K: Borrow<Q>,
         R: RangeBounds<Q>,
@@ -506,17 +501,17 @@ impl<K, V, D> Inner<K, V, D> {
         root.as_mut()
             .map(|root| Arc::get_mut(root).map(Node::set_black));
 
-        let (n_count, n_deleted) = if old.is_some() {
-            (self.n_count - 1, self.n_deleted)
+        let (seqno, n_count) = if old.is_some() {
+            (seqno, self.n_count - 1)
         } else {
-            (self.n_count, self.n_deleted)
+            (self.seqno, self.n_count)
         };
 
         let inner = Inner {
             root: root,
             seqno: cmp::max(self.seqno, seqno),
             n_count,
-            n_deleted,
+            n_deleted: self.n_deleted,
         };
 
         Ok(Ir::Root { inner, old })
@@ -677,8 +672,6 @@ impl<K, V, D> Inner<K, V, D> {
             (None, Some(_)) => err_at!(InvalidCAS, msg: "invalid cas for missing set")?,
         };
 
-        let cas_ok = cas.is_none() || cas.unwrap() == node.to_seqno();
-
         let (root, old) = match node.as_key().borrow().cmp(key) {
             Ordering::Greater if node.left.is_none() => (Some(node), None),
             Ordering::Greater => {
@@ -695,6 +688,8 @@ impl<K, V, D> Inner<K, V, D> {
                 if is_red(node.as_left_ref()) {
                     node = rotate_right(node);
                 }
+
+                let cas_ok = cas.is_none() || cas.unwrap() == node.to_seqno();
 
                 if node.as_key().borrow().eq(key) && !cas_ok {
                     err_at!(InvalidCAS, msg: "{} != {:?}", node.to_seqno(), cas)?;
@@ -725,8 +720,8 @@ impl<K, V, D> Inner<K, V, D> {
                         (Some(fixup(sub_node)), Some(node.entry.clone()))
                     } else {
                         let right = node.as_right_ref();
-                        let (root, old) = self.do_remove(right, op)?.into_res();
-                        node.right = root;
+                        let (right, old) = self.do_remove(right, op)?.into_res();
+                        node.right = right;
                         (Some(fixup(node)), old)
                     }
                 }
@@ -898,10 +893,13 @@ impl<K, V, D> Inner<K, V, D> {
             err_at!(Fatal, msg: "root node must be black")?;
         }
 
-        let ss = (0, 0); // (blacks, n_deleted);
-        let ss = validate_tree(root, red, ss, depth)?;
-        if ss.1 != self.n_deleted {
-            err_at!(Fatal, msg: "n_deleted {} != {}", ss.1, self.n_deleted)?;
+        let n_blacks = 0;
+        let (_, n_deleted, n_count) = validate_tree(root, red, n_blacks, depth)?;
+        if n_deleted != self.n_deleted {
+            err_at!(Fatal, msg: "n_deleted {} != {}", n_deleted, self.n_deleted)?;
+        }
+        if n_count != self.n_count {
+            err_at!(Fatal, msg: "n_count {} != {}", n_count, self.n_count)?;
         }
 
         Ok(())
@@ -1108,9 +1106,9 @@ where
 fn validate_tree<K, V, D>(
     node: Option<&Node<K, V, D>>,
     fromred: bool,
-    mut ss: (usize, usize), // (n_blacks, n_deleted)
+    mut n_blacks: usize,
     depth: usize,
-) -> Result<(usize, usize)>
+) -> Result<(usize, usize, usize)>
 where
     K: Ord + fmt::Debug,
 {
@@ -1119,8 +1117,12 @@ where
     let node = match node {
         Some(_) if fromred && red => err_at!(Fatal, msg: "Mdb has consecutive reds")?,
         Some(node) => node,
-        None => return Ok(ss),
+        None => return Ok((n_blacks, 0, 0)),
     };
+
+    if !red {
+        n_blacks += 1;
+    }
 
     if depth > MAX_TREE_DEPTH {
         err_at!(Fatal, msg: "tree exceeds max_depth {}", depth)?;
@@ -1143,20 +1145,17 @@ where
         (node.as_left_ref(), node.as_right_ref())
     };
 
-    if !red {
-        ss.0 += 1;
-    }
-    let mut ss_l = validate_tree(left, red, ss, depth + 1)?;
-    let ss_r = validate_tree(right, red, ss, depth + 1)?;
+    let (lb, ld, lc) = validate_tree(left, red, n_blacks, depth + 1)?;
+    let (rb, rd, rc) = validate_tree(right, red, n_blacks, depth + 1)?;
 
-    if ss_l.0 != ss_r.0 {
-        err_at!(Fatal, msg: "Mdb unbalanced blacks l:{}, r:{}", ss_l.0, ss_r.0)?;
+    if lb != rb {
+        err_at!(Fatal, msg: "Mdb unbalanced blacks l:{}, r:{}", lb, rb)?;
     }
 
-    ss_l.1 += ss_r.1;
-    ss_l.1 += if node.is_deleted() { 1 } else { 0 };
+    let mut n_deleted = ld + rd;
+    n_deleted += if node.is_deleted() { 1 } else { 0 };
 
-    Ok(ss_l)
+    Ok((lb, n_deleted, lc + rc + 1))
 }
 
 // Iterator type, to do full table scan.
@@ -1374,3 +1373,7 @@ fn find_end<K, V, D, Q>(
         }
     }
 }
+
+#[cfg(test)]
+#[path = "mdb_test.rs"]
+mod mdb_test;

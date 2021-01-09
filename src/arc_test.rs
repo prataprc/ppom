@@ -10,12 +10,13 @@ fn test_arc_omap() {
     let seed: u128 = random();
     // let seed: u128 = 46462177783710469322936477079324309004;
     println!("test_arc_omap {}", seed);
+    let mut rng = SmallRng::from_seed(seed.to_le_bytes());
 
     let mut index: OMap<u8, u64> = OMap::new();
     let mut btmap: BTreeMap<u8, u64> = BTreeMap::new();
 
     for _i in 0..1_000_000 {
-        let (key, val): (u8, u64) = (random(), random());
+        let (key, val): (u8, u64) = (rng.gen(), rng.gen());
         btmap.insert(key, val);
         index = index.set(key, val);
     }
@@ -165,11 +166,11 @@ enum Op<K, V> {
     IsEmpty,
     Set(K, V),
     Remove(K),
-    Validate,
     Get(K),
     Iter,
     Range((Limit<K>, Limit<K>)),
     Reverse((Limit<K>, Limit<K>)),
+    Validate,
 }
 
 #[derive(Debug, Arbitrary, Eq, PartialEq)]

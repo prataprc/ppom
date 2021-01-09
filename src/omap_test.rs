@@ -117,12 +117,12 @@ enum Op<K, V> {
     IsEmpty,
     Set(K, V),
     Remove(K),
-    Validate,
     Get(K),
     Iter,
     Range((Limit<K>, Limit<K>)),
     Reverse((Limit<K>, Limit<K>)),
     Extend(Vec<(K, V)>),
+    Validate,
 }
 
 #[derive(Debug, Arbitrary, Eq, PartialEq)]
