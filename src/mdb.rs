@@ -829,7 +829,7 @@ impl<K, V, D> Inner<K, V, D> {
         let mut paths = Vec::default();
         build_iter(IFlag::Left, root, &mut paths);
 
-        Ok(Iter { paths })
+        Ok(Iter { paths, frwrd: true })
     }
 
     fn range<R, Q>(&self, range: R) -> Result<Range<K, V, D, R, Q>>
@@ -838,16 +838,15 @@ impl<K, V, D> Inner<K, V, D> {
         R: RangeBounds<Q>,
         Q: Ord + ?Sized,
     {
-        let iter = {
-            let root = self.root.as_ref().map(Arc::clone);
-            let mut paths = Vec::default();
-            match range.start_bound() {
-                Bound::Unbounded => build_iter(IFlag::Left, root, &mut paths),
-                Bound::Included(low) => find_start(root, low, true, &mut paths),
-                Bound::Excluded(low) => find_start(root, low, false, &mut paths),
-            };
-            Iter { paths }
+        let root = self.root.as_ref().map(Arc::clone);
+
+        let mut paths = Vec::default();
+        match range.start_bound() {
+            Bound::Unbounded => build_iter(IFlag::Left, root, &mut paths),
+            Bound::Included(low) => find_start(root, low, true, &mut paths),
+            Bound::Excluded(low) => find_start(root, low, false, &mut paths),
         };
+        let iter = Iter { paths, frwrd: true };
 
         Ok(Range {
             range,
@@ -863,15 +862,17 @@ impl<K, V, D> Inner<K, V, D> {
         R: RangeBounds<Q>,
         Q: Ord + ?Sized,
     {
-        let iter = {
-            let root = self.root.as_ref().map(Arc::clone);
-            let mut paths = Vec::default();
-            match range.end_bound() {
-                Bound::Unbounded => build_iter(IFlag::Right, root, &mut paths),
-                Bound::Included(high) => find_end(root, high, true, &mut paths),
-                Bound::Excluded(high) => find_end(root, high, false, &mut paths),
-            };
-            Iter { paths }
+        let root = self.root.as_ref().map(Arc::clone);
+
+        let mut paths = Vec::default();
+        match range.end_bound() {
+            Bound::Unbounded => build_iter(IFlag::Right, root, &mut paths),
+            Bound::Included(high) => find_end(root, high, true, &mut paths),
+            Bound::Excluded(high) => find_end(root, high, false, &mut paths),
+        };
+        let iter = Iter {
+            paths,
+            frwrd: false,
         };
 
         Ok(Reverse {
@@ -1164,6 +1165,7 @@ where
 // read threads, but not with concurrent write threads.
 pub struct Iter<K, V, D> {
     paths: Vec<Fragment<K, V, D>>,
+    frwrd: bool,
 }
 
 impl<K, V, D> Iterator for Iter<K, V, D>
@@ -1177,18 +1179,35 @@ where
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             let path = self.paths.last_mut()?;
-            match path.flag {
-                IFlag::Left => {
-                    path.flag = IFlag::Center;
-                    break Some(path.node.entry.clone());
+            if self.frwrd {
+                match path.flag {
+                    IFlag::Left => {
+                        path.flag = IFlag::Center;
+                        break Some(path.node.entry.clone());
+                    }
+                    IFlag::Center => {
+                        path.flag = IFlag::Right;
+                        let right = path.node.right.as_ref().map(Arc::clone);
+                        build_iter(IFlag::Left, right, &mut self.paths)
+                    }
+                    IFlag::Right => {
+                        self.paths.pop();
+                    }
                 }
-                IFlag::Center => {
-                    path.flag = IFlag::Right;
-                    let right = path.node.right.as_ref().map(Arc::clone);
-                    build_iter(IFlag::Left, right, &mut self.paths)
-                }
-                IFlag::Right => {
-                    self.paths.pop();
+            } else {
+                match path.flag {
+                    IFlag::Right => {
+                        path.flag = IFlag::Center;
+                        break Some(path.node.entry.clone());
+                    }
+                    IFlag::Center => {
+                        path.flag = IFlag::Left;
+                        let left = path.node.left.as_ref().map(Arc::clone);
+                        build_iter(IFlag::Right, left, &mut self.paths)
+                    }
+                    IFlag::Left => {
+                        self.paths.pop();
+                    }
                 }
             }
         }
@@ -1262,7 +1281,7 @@ where
             false => {
                 let entry = self.iter.next()?;
                 let qey = entry.as_key().borrow();
-                match self.range.end_bound() {
+                match self.range.start_bound() {
                     Bound::Unbounded => Some(entry),
                     Bound::Included(low) if qey.ge(low) => Some(entry),
                     Bound::Excluded(low) if qey.gt(low) => Some(entry),

@@ -11,7 +11,7 @@ type Entry = db::Entry<u8, u64, u64>;
 fn test_mdb_nodiff() {
     let seed: u128 = random();
     let seed: u128 = 306171699234476756746827099155462650145;
-    println!("test_mdb_nodiff {}", seed);
+    println!("test_mdb_nodiff seed {}", seed);
     let mut rng = SmallRng::from_seed(seed.to_le_bytes());
 
     let n_init = 100_000;
@@ -62,20 +62,20 @@ fn test_mdb_nodiff() {
 #[test]
 fn test_mdb_diff() {
     let seed: u128 = random();
-    // let seed: u128 = 46462177783710469322936477079324309004;
-    println!("test_mdb_diff {}", seed);
+    let seed: u128 = 231762160918118338780311754609780190356;
+    println!("test_mdb_diff seed {}", seed);
     let mut rng = SmallRng::from_seed(seed.to_le_bytes());
 
     let n_init = 1_000; // TODO
     let n_incr = 1_000; // TODO
-    let n_threads = 1; // TODO
+    let n_threads = 2; // TODO
 
     let mut index: Mdb<u8, u64, u64> = Mdb::new("test_nodiff");
     let mut btmap: BTreeMap<u8, Entry> = BTreeMap::new();
 
     for _i in 0..n_init {
         let (key, val): (u8, u64) = (rng.gen(), rng.gen());
-        let Wr { seqno, .. } = index.set(key, val).unwrap();
+        let Wr { seqno, .. } = index.insert(key, val).unwrap();
         match btmap.get_mut(&key) {
             Some(entry) => entry.insert(val, seqno),
             None => {
@@ -429,7 +429,7 @@ fn compare_iter<'a>(
     mut index: impl Iterator<Item = Entry>,
     btmap: impl Iterator<Item = (&'a u8, &'a Entry)>,
 ) {
-    for (_, val) in btmap {
+    for (_key, val) in btmap {
         loop {
             match index.next() {
                 Some(e) => match e.as_key().cmp(val.as_key()) {
