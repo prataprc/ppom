@@ -30,21 +30,14 @@ fn test_node() {
     assert_eq!(entry, node.entry);
 
     node.delete(4);
-    entry.value.delete(4);
-    entry.deltas.insert(
-        0,
-        db::Delta::U {
-            delta: 400,
-            seqno: 3,
-        },
-    );
+    entry.delete(4);
     assert_eq!(entry, node.entry);
 
     node.delete(5);
+    entry.delete(5);
     assert_eq!(entry, node.entry);
 
     node.insert(500, 6);
-    entry.value.set(500, 6);
-    entry.deltas.insert(0, db::Delta::D { seqno: 4 });
+    entry.insert(500, 6);
     assert_eq!(entry, node.entry);
 }

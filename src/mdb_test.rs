@@ -10,7 +10,7 @@ type Entry = db::Entry<u8, u64, u64>;
 #[test]
 fn test_mdb_nodiff() {
     let seed: u128 = random();
-    let seed: u128 = 306171699234476756746827099155462650145;
+    // let seed: u128 = 306171699234476756746827099155462650145;
     println!("test_mdb_nodiff seed {}", seed);
     let mut rng = SmallRng::from_seed(seed.to_le_bytes());
 
@@ -62,15 +62,15 @@ fn test_mdb_nodiff() {
 #[test]
 fn test_mdb_diff() {
     let seed: u128 = random();
-    let seed: u128 = 231762160918118338780311754609780190356;
+    // let seed: u128 = 231762160918118338780311754609780190356;
     println!("test_mdb_diff seed {}", seed);
     let mut rng = SmallRng::from_seed(seed.to_le_bytes());
 
-    let n_init = 1_000; // TODO
-    let n_incr = 1_000; // TODO
-    let n_threads = 2; // TODO
+    let n_init = 100_000;
+    let n_incr = 100_000;
+    let n_threads = 16;
 
-    let mut index: Mdb<u8, u64, u64> = Mdb::new("test_nodiff");
+    let index: Mdb<u8, u64, u64> = Mdb::new("test_nodiff");
     let mut btmap: BTreeMap<u8, Entry> = BTreeMap::new();
 
     for _i in 0..n_init {
@@ -98,6 +98,11 @@ fn test_mdb_diff() {
     for handle in handles.into_iter() {
         btmap = merge_btmap([btmap, handle.join().unwrap()]);
     }
+    for (key, val) in btmap.iter_mut() {
+        let mut values = val.to_values();
+        values.dedup();
+        *val = Entry::from((key.clone(), values));
+    }
 
     assert_eq!(index.len(), btmap.len());
 
@@ -123,7 +128,7 @@ fn do_nodiff_test(
         let mut uns = Unstructured::new(&bytes);
 
         let op: NodiffOp<u8, u64> = uns.arbitrary().unwrap();
-        let (seqno, cas) = match op.clone() {
+        let (_seqno, _cas) = match op.clone() {
             NodiffOp::Set(key, val) => {
                 counts[0] += 1;
                 let Wr { seqno, .. } = index.set(key, val).unwrap();
@@ -178,7 +183,7 @@ fn do_nodiff_test(
             }
             NodiffOp::Get(key) => {
                 counts[8] += 1;
-                index.get(&key);
+                index.get(&key).ok();
                 (0, 0)
             }
             NodiffOp::Iter => {
@@ -208,7 +213,7 @@ fn do_nodiff_test(
                 (0, 0)
             }
         };
-        // println!("{}-op -- {:?} seqno:{} cas:{}", j, op, seqno, cas);
+        // println!("{}-op -- {:?} seqno:{} cas:{}", j, op, _seqno, _cas);
     }
 
     println!(
@@ -320,12 +325,17 @@ fn do_diff_test(
             DiffOp::Range((l, h)) if asc_range(&l, &h) => {
                 counts[8] += 1;
                 let r = (Bound::from(l), Bound::from(h));
-                compare_iter(index.range(r.clone()).unwrap(), btmap.range(r));
+                compare_iter(j, index.range(r.clone()).unwrap(), btmap.range(r), true);
             }
             DiffOp::Reverse((l, h)) if asc_range(&l, &h) => {
                 counts[9] += 1;
                 let r = (Bound::from(l), Bound::from(h));
-                compare_iter(index.reverse(r.clone()).unwrap(), btmap.range(r).rev());
+                compare_iter(
+                    j,
+                    index.reverse(r.clone()).unwrap(),
+                    btmap.range(r).rev(),
+                    false,
+                );
             }
             DiffOp::Range((_, _)) | DiffOp::Reverse((_, _)) => {
                 counts[10] += 1;
@@ -426,21 +436,27 @@ fn merge_btmap(items: [BTreeMap<u8, Entry>; 2]) -> BTreeMap<u8, Entry> {
 }
 
 fn compare_iter<'a>(
+    j: usize,
     mut index: impl Iterator<Item = Entry>,
     btmap: impl Iterator<Item = (&'a u8, &'a Entry)>,
+    frwrd: bool,
 ) {
     for (_key, val) in btmap {
         loop {
-            match index.next() {
+            let e = index.next();
+            match e {
                 Some(e) => match e.as_key().cmp(val.as_key()) {
-                    Ordering::Less => (),
                     Ordering::Equal => {
                         assert!(e.contains(&val));
                         break;
                     }
-                    Ordering::Greater => panic!("missing entry"),
+                    Ordering::Less if frwrd => (),
+                    Ordering::Greater if !frwrd => (),
+                    Ordering::Less | Ordering::Greater => {
+                        panic!("{} error miss entry {} {}", j, e.as_key(), val.as_key())
+                    }
                 },
-                None => panic!("missing entry"),
+                None => panic!("{} error missing entry", j),
             }
         }
     }
