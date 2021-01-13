@@ -7,35 +7,21 @@
 //! > structure is *fully persistent* if every version can be both accessed
 //! > and modified. If there is also a meld or merge operation that can
 //! > create a new version from two previous versions, the data structure is
-//! > called *confluently persistent*. > Structures that are not persistent are
+//! > called *confluently persistent*. Structures that are not persistent are
 //! > called *ephemeral* data structures.
 //!
 //! Following types implement an ordered-map for specific use cases:
 //!
-//! * [rc::OMap] implement *fully persistent* ordered-map using *llrb* tree.
-//!   Provides shared-ownership, but not thread-safe.
-//! * [arc::OMap] implement *fully persistent* ordered-map using *llrb* tree.
-//!   Provides shared-ownership and thread-safe.
-//! * [Mdb] implements *partially persistent* ordered-map, using
-//!   [left-leaning-red-black][wiki-llrb]. This variant is most useful for
+//! * [OMap] implement *ephemeral* ordered-map, that is meant for best case
+//!   single-threaded performance.
+//! * [rc::OMap] implement *fully persistent* ordered-map that allows
+//!   shared-ownership, but not thread-safe.
+//! * [arc::OMap] implement *fully persistent* ordered-map that allows
+//!   shared-ownership and thread-safe.
+//! * [Mdb] implements *partially persistent* ordered-map most useful for
 //!   database applications.
 //!
-//! Ownership and Cloning
-//! ---------------------
-//!
-//! Cloning `arc::OMap` and `rc::OMap` is cheap, it creates a shared ownership
-//! of the underlying tree. This is great for applications requiring
-//! shared-ownership, but at the cost of copy-on-write for every mutation, like
-//! set and remove, in the map.
-//!
-//! Thread Safety
-//! -------------
-//!
-//! `arc::OMap` is thread safe through `Arc`. To trade-off thread-safety for
-//! performance use `rc::OMap` type, which is same as `arc::OMap` type except
-//! for using `std::rc::Rc` instead of `std::sync::Arc` for shared ownership.
-//! That is, `Send` and `Sync` traits are not available for `rc::OMap` type
-//! while it is available for `arc::OMap` type.
+//! All the above types use [Left-Leaning-Red-Black][wiki-llrb] tree underneath.
 //!
 //! Ephemeral ordered-map
 //! ---------------------
@@ -49,6 +35,23 @@
 //! - Uses ownership model and borrow semantics to ensure safety.
 //! - No Durability guarantee.
 //! - Not thread safe.
+//!
+//! Ownership and Cloning
+//! ---------------------
+//!
+//! Cloning `arc::OMap` and `rc::OMap` is cheap, it creates a shared ownership
+//! of the underlying tree. This is great for applications requiring
+//! shared-ownership, but at the cost of copy-on-write for every mutation, like
+//! set and remove operations.
+//!
+//! Thread Safety
+//! -------------
+//!
+//! `arc::OMap` is thread safe through `Arc`. To trade-off thread-safety for
+//! performance use `rc::OMap` type, which is same as `arc::OMap` type except
+//! for using `std::rc::Rc` instead of `std::sync::Arc` for shared ownership.
+//! That is, `Send` and `Sync` traits are not available for `rc::OMap` type
+//! while it is available for `arc::OMap` type.
 //!
 //! Constructing a new [OMap] instance and CRUD operations:
 //!
