@@ -19,7 +19,7 @@ fn test_node() {
     assert_eq!(node.is_black(), false);
 
     node.set(300, 2);
-    assert_eq!(db::Entry::new(10, 300, 2), node.entry);
+    assert_eq!(db::Entry::new(10, 300, 2), node.entry.as_ref().clone());
 
     node.insert(400, 3);
     let mut entry = db::Entry::new(10, 400, 3);
@@ -27,17 +27,17 @@ fn test_node() {
         delta: 300,
         seqno: 2,
     }];
-    assert_eq!(entry, node.entry);
+    assert_eq!(entry, node.entry.as_ref().clone());
 
     node.delete(4);
     entry.delete(4);
-    assert_eq!(entry, node.entry);
+    assert_eq!(entry, node.entry.as_ref().clone());
 
     node.delete(5);
     entry.delete(5);
-    assert_eq!(entry, node.entry);
+    assert_eq!(entry, node.entry.as_ref().clone());
 
     node.insert(500, 6);
     entry.insert(500, 6);
-    assert_eq!(entry, node.entry);
+    assert_eq!(entry, node.entry.as_ref().clone());
 }

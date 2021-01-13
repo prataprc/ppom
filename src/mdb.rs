@@ -406,7 +406,7 @@ enum Ir<K, V, D> {
     },
     Res {
         root: Option<Arc<Node<K, V, D>>>,
-        old: Option<db::Entry<K, V, D>>,
+        old: Option<Arc<db::Entry<K, V, D>>>,
     },
 }
 
@@ -418,7 +418,7 @@ impl<K, V, D> Ir<K, V, D> {
         }
     }
 
-    fn into_res(self) -> (Option<Arc<Node<K, V, D>>>, Option<db::Entry<K, V, D>>) {
+    fn into_res(self) -> (Option<Arc<Node<K, V, D>>>, Option<Arc<db::Entry<K, V, D>>>) {
         match self {
             Ir::Res { root, old } => (root, old),
             _ => unreachable!(),
@@ -453,6 +453,8 @@ impl<K, V, D> Inner<K, V, D> {
             n_deleted,
         };
 
+        let old = old.as_ref().map(|old| old.as_ref().clone());
+
         Ok(Ir::Root { inner, old })
     }
 
@@ -481,6 +483,8 @@ impl<K, V, D> Inner<K, V, D> {
             n_count,
             n_deleted,
         };
+
+        let old = old.as_ref().map(|old| old.as_ref().clone());
 
         Ok(Ir::Root { inner, old })
     }
@@ -514,6 +518,8 @@ impl<K, V, D> Inner<K, V, D> {
             n_deleted: self.n_deleted,
         };
 
+        let old = old.as_ref().map(|old| old.as_ref().clone());
+
         Ok(Ir::Root { inner, old })
     }
 
@@ -546,6 +552,8 @@ impl<K, V, D> Inner<K, V, D> {
             n_count,
             n_deleted,
         };
+
+        let old = old.as_ref().map(|old| old.as_ref().clone());
 
         Ok(Ir::Root { inner, old })
     }
@@ -1098,7 +1106,7 @@ where
         Some(nref) => match nref.as_key().borrow().cmp(key) {
             Ordering::Less => get(nref.as_right_ref(), key),
             Ordering::Greater => get(nref.as_left_ref(), key),
-            Ordering::Equal => Ok(nref.entry.clone()),
+            Ordering::Equal => Ok(nref.entry.as_ref().clone()),
         },
         None => err_at!(KeyNotFound, msg: "get missing key"),
     }
@@ -1183,7 +1191,7 @@ where
                 match path.flag {
                     IFlag::Left => {
                         path.flag = IFlag::Center;
-                        break Some(path.node.entry.clone());
+                        break Some(path.node.entry.as_ref().clone());
                     }
                     IFlag::Center => {
                         path.flag = IFlag::Right;
@@ -1198,7 +1206,7 @@ where
                 match path.flag {
                     IFlag::Right => {
                         path.flag = IFlag::Center;
-                        break Some(path.node.entry.clone());
+                        break Some(path.node.entry.as_ref().clone());
                     }
                     IFlag::Center => {
                         path.flag = IFlag::Left;

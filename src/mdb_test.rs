@@ -5,7 +5,7 @@ use super::*;
 
 use std::{collections::BTreeMap, ops::Bound, thread};
 
-type Entry = db::Entry<u8, u64, u64>;
+type Entry = db::Entry<u16, u64, u64>;
 
 #[test]
 fn test_mdb_nodiff() {
@@ -18,11 +18,11 @@ fn test_mdb_nodiff() {
     let n_incr = 100_000;
     let n_threads = 16;
 
-    let index: Mdb<u8, u64, u64> = Mdb::new("test_diff");
-    let mut btmap: BTreeMap<u8, Entry> = BTreeMap::new();
+    let index: Mdb<u16, u64, u64> = Mdb::new("test_diff");
+    let mut btmap: BTreeMap<u16, Entry> = BTreeMap::new();
 
     for _i in 0..n_init {
-        let (key, val): (u8, u64) = (rng.gen(), rng.gen());
+        let (key, val): (u16, u64) = (rng.gen(), rng.gen());
         let Wr { seqno, .. } = index.set(key, val).unwrap();
         btmap.insert(key, Entry::new(key, val, seqno));
     }
@@ -70,11 +70,11 @@ fn test_mdb_diff() {
     let n_incr = 100_000;
     let n_threads = 16;
 
-    let index: Mdb<u8, u64, u64> = Mdb::new("test_nodiff");
-    let mut btmap: BTreeMap<u8, Entry> = BTreeMap::new();
+    let index: Mdb<u16, u64, u64> = Mdb::new("test_nodiff");
+    let mut btmap: BTreeMap<u16, Entry> = BTreeMap::new();
 
     for _i in 0..n_init {
-        let (key, val): (u8, u64) = (rng.gen(), rng.gen());
+        let (key, val): (u16, u64) = (rng.gen(), rng.gen());
         let Wr { seqno, .. } = index.insert(key, val).unwrap();
         match btmap.get_mut(&key) {
             Some(entry) => entry.insert(val, seqno),
@@ -116,9 +116,9 @@ fn do_nodiff_test(
     j: usize,
     seed: u128,
     n: usize,
-    index: Mdb<u8, u64, u64>,
-    mut btmap: BTreeMap<u8, Entry>,
-) -> BTreeMap<u8, Entry> {
+    index: Mdb<u16, u64, u64>,
+    mut btmap: BTreeMap<u16, Entry>,
+) -> BTreeMap<u16, Entry> {
     let mut rng = SmallRng::from_seed(seed.to_le_bytes());
 
     let mut counts = [0_usize; 14];
@@ -127,7 +127,7 @@ fn do_nodiff_test(
         let bytes = rng.gen::<[u8; 32]>();
         let mut uns = Unstructured::new(&bytes);
 
-        let op: NodiffOp<u8, u64> = uns.arbitrary().unwrap();
+        let op: NodiffOp<u16, u64> = uns.arbitrary().unwrap();
         let (_seqno, _cas) = match op.clone() {
             NodiffOp::Set(key, val) => {
                 counts[0] += 1;
@@ -230,9 +230,9 @@ fn do_diff_test(
     j: usize,
     seed: u128,
     n: usize,
-    index: Mdb<u8, u64, u64>,
-    mut btmap: BTreeMap<u8, Entry>,
-) -> BTreeMap<u8, Entry> {
+    index: Mdb<u16, u64, u64>,
+    mut btmap: BTreeMap<u16, Entry>,
+) -> BTreeMap<u16, Entry> {
     let mut rng = SmallRng::from_seed(seed.to_le_bytes());
 
     let mut counts = [0_usize; 12];
@@ -241,7 +241,7 @@ fn do_diff_test(
         let bytes = rng.gen::<[u8; 32]>();
         let mut uns = Unstructured::new(&bytes);
 
-        let op: DiffOp<u8, u64> = uns.arbitrary().unwrap();
+        let op: DiffOp<u16, u64> = uns.arbitrary().unwrap();
         // println!("{}-op -- {:?}", j, op);
         match op {
             DiffOp::Insert(key, val) => {
@@ -412,7 +412,7 @@ impl<T> From<Limit<T>> for Bound<T> {
     }
 }
 
-fn merge_btmap(items: [BTreeMap<u8, Entry>; 2]) -> BTreeMap<u8, Entry> {
+fn merge_btmap(items: [BTreeMap<u16, Entry>; 2]) -> BTreeMap<u16, Entry> {
     let [one, mut two] = items;
 
     let mut thr = BTreeMap::new();
@@ -438,7 +438,7 @@ fn merge_btmap(items: [BTreeMap<u8, Entry>; 2]) -> BTreeMap<u8, Entry> {
 fn compare_iter<'a>(
     j: usize,
     mut index: impl Iterator<Item = Entry>,
-    btmap: impl Iterator<Item = (&'a u8, &'a Entry)>,
+    btmap: impl Iterator<Item = (&'a u16, &'a Entry)>,
     frwrd: bool,
 ) {
     for (_key, val) in btmap {
