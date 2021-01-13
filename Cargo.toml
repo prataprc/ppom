@@ -12,12 +12,21 @@ license = "MIT"
 readme = "README.md"
 edition = "2018"
 
+[[bin]]
+name = "perf"
+required-features = ["perf"]
+
 [dependencies]
 mkit = { path = "../mkit", version = "0.2.0" }
-rand = "0.6.4"
+rand = { version = "0.7.3", features = ["small_rng"] }
 arbitrary = { version = "0.4.7", features = ["derive"] }
 
+structopt = { version = "0.3.20", default-features = false, optional = true }
+
 [dev-dependencies]
+
+[features]
+perf = ["structopt"]
 
 # [badges]
 # maintenance = { status = "actively-developed" }
