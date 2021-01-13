@@ -1,11 +1,10 @@
 [package]
 name = "ppom"
 version = "0.5.0"
-authors = ["prataprc <prataprc@gmail.com>"]
 description = "Left Leaning Red Black index in Rust-lang"
-documentation = "https://docs.rs/ppom"
-homepage = "https://github.com/bnclabs/ppom"
 repository = "https://github.com/bnclabs/ppom"
+documentation = "https://docs.rs/ppom"
+authors = ["prataprc <prataprc@gmail.com>"]
 keywords = ["storage", "llrb", "sorting", "data-structure"]
 categories = ["algorithms", "database", "data-structure"]
 license = "MIT"
@@ -27,7 +26,3 @@ structopt = { version = "0.3.20", default-features = false, optional = true }
 
 [features]
 perf = ["structopt"]
-
-# [badges]
-# maintenance = { status = "actively-developed" }
-# travis-ci = { repository = "bnclabs/ppom" }

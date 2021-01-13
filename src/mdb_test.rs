@@ -16,7 +16,7 @@ fn test_mdb_nodiff() {
 
     let n_init = 100_000;
     let n_incr = 100_000;
-    let n_threads = 16;
+    let n_threads = 8;
 
     let index: Mdb<u16, u64, u64> = Mdb::new("test_diff");
     let mut btmap: BTreeMap<u16, Entry> = BTreeMap::new();
@@ -68,7 +68,7 @@ fn test_mdb_diff() {
 
     let n_init = 100_000;
     let n_incr = 100_000;
-    let n_threads = 16;
+    let n_threads = 8;
 
     let index: Mdb<u16, u64, u64> = Mdb::new("test_nodiff");
     let mut btmap: BTreeMap<u16, Entry> = BTreeMap::new();
