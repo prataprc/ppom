@@ -351,7 +351,7 @@ impl<K, V, D> Mdb<K, V, D> {
 
     pub fn iter(&self) -> Result<Iter<K, V, D>> {
         let inner = Arc::clone(&self.inner.read());
-        inner.iter()
+        Ok(inner.iter())
     }
 
     pub fn range<R, Q>(&self, range: R) -> Result<Range<K, V, D, R, Q>>
@@ -361,7 +361,7 @@ impl<K, V, D> Mdb<K, V, D> {
         Q: Ord + ?Sized,
     {
         let inner = Arc::clone(&self.inner.read());
-        inner.range(range)
+        Ok(inner.range(range))
     }
 
     pub fn reverse<R, Q>(&self, range: R) -> Result<Reverse<K, V, D, R, Q>>
@@ -371,7 +371,7 @@ impl<K, V, D> Mdb<K, V, D> {
         Q: Ord + ?Sized,
     {
         let inner = Arc::clone(&self.inner.read());
-        inner.reverse(range)
+        Ok(inner.reverse(range))
     }
 
     /// Validate Mdb tree with following rules:
@@ -411,6 +411,7 @@ enum Ir<K, V, D> {
 }
 
 impl<K, V, D> Ir<K, V, D> {
+    #[allow(clippy::type_complexity)]
     fn into_root(self) -> (Inner<K, V, D>, Option<db::Entry<K, V, D>>) {
         match self {
             Ir::Root { inner, old } => (inner, old),
@@ -418,6 +419,7 @@ impl<K, V, D> Ir<K, V, D> {
         }
     }
 
+    #[allow(clippy::type_complexity)]
     fn into_res(self) -> (Option<Arc<Node<K, V, D>>>, Option<Arc<db::Entry<K, V, D>>>) {
         match self {
             Ir::Res { root, old } => (root, old),
@@ -434,7 +436,7 @@ impl<K, V, D> Inner<K, V, D> {
         D: Clone,
     {
         let (key, value, cas, seqno) = op;
-        let seqno = seqno.unwrap_or(self.seqno.saturating_add(1));
+        let seqno = seqno.unwrap_or_else(|| self.seqno.saturating_add(1));
         let root = self.root.as_ref().map(Borrow::borrow);
 
         let op = (key, value, cas, seqno);
@@ -465,7 +467,7 @@ impl<K, V, D> Inner<K, V, D> {
         D: Clone,
     {
         let (key, value, cas, seqno) = op;
-        let seqno = seqno.unwrap_or(self.seqno.saturating_add(1));
+        let seqno = seqno.unwrap_or_else(|| self.seqno.saturating_add(1));
         let root = self.root.as_ref().map(Borrow::borrow);
 
         let op = (key, value, cas, seqno);
@@ -497,7 +499,7 @@ impl<K, V, D> Inner<K, V, D> {
         D: Clone,
     {
         let (key, cas, seqno) = op;
-        let seqno = seqno.unwrap_or(self.seqno.saturating_add(1));
+        let seqno = seqno.unwrap_or_else(|| self.seqno.saturating_add(1));
         let root = self.root.as_ref().map(Borrow::borrow);
 
         let (mut root, old) = self.do_remove(root, (key, cas, seqno))?.into_res();
@@ -512,7 +514,7 @@ impl<K, V, D> Inner<K, V, D> {
         };
 
         let inner = Inner {
-            root: root,
+            root,
             seqno: cmp::max(self.seqno, seqno),
             n_count,
             n_deleted: self.n_deleted,
@@ -532,7 +534,7 @@ impl<K, V, D> Inner<K, V, D> {
         <V as Diff>::Delta: From<V>,
     {
         let (key, cas, seqno) = op;
-        let seqno = seqno.unwrap_or(self.seqno.saturating_add(1));
+        let seqno = seqno.unwrap_or_else(|| self.seqno.saturating_add(1));
         let root = self.root.as_ref().map(Borrow::borrow);
 
         let (mut root, old) = self.do_delete(root, (key, cas, seqno))?.into_res();
@@ -547,7 +549,7 @@ impl<K, V, D> Inner<K, V, D> {
         };
 
         let inner = Inner {
-            root: root,
+            root,
             seqno: cmp::max(self.seqno, seqno),
             n_count,
             n_deleted,
@@ -669,7 +671,7 @@ impl<K, V, D> Inner<K, V, D> {
         V: Clone,
         D: Clone,
     {
-        let (key, cas, _) = op.clone();
+        let (key, cas, _) = op;
 
         let mut node: Node<K, V, D> = match (node, cas) {
             (Some(node), _) => node.clone(),
@@ -752,7 +754,7 @@ impl<K, V, D> Inner<K, V, D> {
         D: Clone,
         <V as Diff>::Delta: From<V>,
     {
-        let (key, cas, seqno) = op.clone();
+        let (key, cas, seqno) = op;
 
         let mut node: Node<K, V, D> = match (node, cas) {
             (Some(node), _) => node.clone(),
@@ -832,15 +834,15 @@ impl<K, V, D> Inner<K, V, D> {
         get(root, key)
     }
 
-    fn iter(&self) -> Result<Iter<K, V, D>> {
+    fn iter(&self) -> Iter<K, V, D> {
         let root = self.root.as_ref().map(Arc::clone);
         let mut paths = Vec::default();
         build_iter(IFlag::Left, root, &mut paths);
 
-        Ok(Iter { paths, frwrd: true })
+        Iter { paths, frwrd: true }
     }
 
-    fn range<R, Q>(&self, range: R) -> Result<Range<K, V, D, R, Q>>
+    fn range<R, Q>(&self, range: R) -> Range<K, V, D, R, Q>
     where
         K: Borrow<Q>,
         R: RangeBounds<Q>,
@@ -856,15 +858,15 @@ impl<K, V, D> Inner<K, V, D> {
         };
         let iter = Iter { paths, frwrd: true };
 
-        Ok(Range {
+        Range {
             range,
             iter,
             fin: false,
             high: marker::PhantomData,
-        })
+        }
     }
 
-    fn reverse<R, Q>(&self, range: R) -> Result<Reverse<K, V, D, R, Q>>
+    fn reverse<R, Q>(&self, range: R) -> Reverse<K, V, D, R, Q>
     where
         K: Borrow<Q>,
         R: RangeBounds<Q>,
@@ -883,12 +885,12 @@ impl<K, V, D> Inner<K, V, D> {
             frwrd: false,
         };
 
-        Ok(Reverse {
+        Reverse {
             range,
             iter,
             fin: false,
             low: marker::PhantomData,
-        })
+        }
     }
 
     fn validate(&self) -> Result<()>

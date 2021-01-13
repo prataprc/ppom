@@ -1,4 +1,4 @@
-use std::{ops::Deref, sync::Arc};
+use std::sync::Arc;
 
 use mkit::{data::Diff, db};
 
@@ -65,12 +65,12 @@ impl<K, V, D> Node<K, V, D> {
 impl<K, V, D> Node<K, V, D> {
     #[inline]
     pub fn as_left_ref(&self) -> Option<&Node<K, V, D>> {
-        self.left.as_ref().map(Deref::deref)
+        self.left.as_deref()
     }
 
     #[inline]
     pub fn as_right_ref(&self) -> Option<&Node<K, V, D>> {
-        self.right.as_ref().map(Deref::deref)
+        self.right.as_deref()
     }
 
     #[inline]

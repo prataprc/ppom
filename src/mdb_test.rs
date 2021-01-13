@@ -5,7 +5,8 @@ use super::*;
 
 use std::{collections::BTreeMap, ops::Bound, thread};
 
-type Entry = db::Entry<u16, u64, u64>;
+type Ky = u8;
+type Entry = db::Entry<Ky, u64, u64>;
 
 #[test]
 fn test_mdb_nodiff() {
@@ -14,15 +15,15 @@ fn test_mdb_nodiff() {
     println!("test_mdb_nodiff seed {}", seed);
     let mut rng = SmallRng::from_seed(seed.to_le_bytes());
 
-    let n_init = 100_000;
-    let n_incr = 100_000;
+    let n_init = 1_000;
+    let n_incr = 1_000;
     let n_threads = 8;
 
-    let index: Mdb<u16, u64, u64> = Mdb::new("test_diff");
-    let mut btmap: BTreeMap<u16, Entry> = BTreeMap::new();
+    let index: Mdb<Ky, u64, u64> = Mdb::new("test_diff");
+    let mut btmap: BTreeMap<Ky, Entry> = BTreeMap::new();
 
     for _i in 0..n_init {
-        let (key, val): (u16, u64) = (rng.gen(), rng.gen());
+        let (key, val): (Ky, u64) = (rng.gen(), rng.gen());
         let Wr { seqno, .. } = index.set(key, val).unwrap();
         btmap.insert(key, Entry::new(key, val, seqno));
     }
@@ -30,10 +31,10 @@ fn test_mdb_nodiff() {
     println!("initial load len:{}/{}", index.len(), btmap.len());
 
     let mut handles = vec![];
-    for j in 0..n_threads {
+    for id in 0..n_threads {
         let (a, b) = (index.clone(), btmap.clone());
-        let seed = seed + ((j as u128) * 100);
-        let h = thread::spawn(move || do_nodiff_test(j, seed, n_incr, a, b));
+        let seed = seed + ((id as u128) * 100);
+        let h = thread::spawn(move || do_nodiff_test(id, seed, n_incr, a, b));
         handles.push(h);
     }
 
@@ -66,15 +67,15 @@ fn test_mdb_diff() {
     println!("test_mdb_diff seed {}", seed);
     let mut rng = SmallRng::from_seed(seed.to_le_bytes());
 
-    let n_init = 100_000;
-    let n_incr = 100_000;
+    let n_init = 1_000;
+    let n_incr = 1_000;
     let n_threads = 8;
 
-    let index: Mdb<u16, u64, u64> = Mdb::new("test_nodiff");
-    let mut btmap: BTreeMap<u16, Entry> = BTreeMap::new();
+    let index: Mdb<Ky, u64, u64> = Mdb::new("test_nodiff");
+    let mut btmap: BTreeMap<Ky, Entry> = BTreeMap::new();
 
     for _i in 0..n_init {
-        let (key, val): (u16, u64) = (rng.gen(), rng.gen());
+        let (key, val): (Ky, u64) = (rng.gen(), rng.gen());
         let Wr { seqno, .. } = index.insert(key, val).unwrap();
         match btmap.get_mut(&key) {
             Some(entry) => entry.insert(val, seqno),
@@ -87,10 +88,10 @@ fn test_mdb_diff() {
     println!("initial load len:{}/{}", index.len(), btmap.len());
 
     let mut handles = vec![];
-    for j in 0..n_threads {
+    for id in 0..n_threads {
         let (a, b) = (index.clone(), btmap.clone());
-        let seed = seed + ((j as u128) * 100);
-        let h = thread::spawn(move || do_diff_test(j, seed, n_incr, a, b));
+        let seed = seed + ((id as u128) * 100);
+        let h = thread::spawn(move || do_diff_test(id, seed, n_incr, a, b));
         handles.push(h);
     }
 
@@ -101,7 +102,7 @@ fn test_mdb_diff() {
     for (key, val) in btmap.iter_mut() {
         let mut values = val.to_values();
         values.dedup();
-        *val = Entry::from((key.clone(), values));
+        *val = Entry::from((*key, values));
     }
 
     assert_eq!(index.len(), btmap.len());
@@ -113,12 +114,12 @@ fn test_mdb_diff() {
 }
 
 fn do_nodiff_test(
-    j: usize,
+    id: usize,
     seed: u128,
     n: usize,
-    index: Mdb<u16, u64, u64>,
-    mut btmap: BTreeMap<u16, Entry>,
-) -> BTreeMap<u16, Entry> {
+    index: Mdb<Ky, u64, u64>,
+    mut btmap: BTreeMap<Ky, Entry>,
+) -> BTreeMap<Ky, Entry> {
     let mut rng = SmallRng::from_seed(seed.to_le_bytes());
 
     let mut counts = [0_usize; 14];
@@ -127,7 +128,7 @@ fn do_nodiff_test(
         let bytes = rng.gen::<[u8; 32]>();
         let mut uns = Unstructured::new(&bytes);
 
-        let op: NodiffOp<u16, u64> = uns.arbitrary().unwrap();
+        let op: NodiffOp<Ky, u64> = uns.arbitrary().unwrap();
         let (_seqno, _cas) = match op.clone() {
             NodiffOp::Set(key, val) => {
                 counts[0] += 1;
@@ -194,13 +195,13 @@ fn do_nodiff_test(
             NodiffOp::Range((l, h)) if asc_range(&l, &h) => {
                 counts[10] += 1;
                 let r = (Bound::from(l), Bound::from(h));
-                let _: Vec<Entry> = index.range(r.clone()).unwrap().collect();
+                let _: Vec<Entry> = index.range(r).unwrap().collect();
                 (0, 0)
             }
             NodiffOp::Reverse((l, h)) if asc_range(&l, &h) => {
                 counts[11] += 1;
                 let r = (Bound::from(l), Bound::from(h));
-                let _: Vec<Entry> = index.reverse(r.clone()).unwrap().collect();
+                let _: Vec<Entry> = index.reverse(r).unwrap().collect();
                 (0, 0)
             }
             NodiffOp::Range((_, _)) | NodiffOp::Reverse((_, _)) => {
@@ -213,12 +214,12 @@ fn do_nodiff_test(
                 (0, 0)
             }
         };
-        // println!("{}-op -- {:?} seqno:{} cas:{}", j, op, _seqno, _cas);
+        // println!("{}-op -- {:?} seqno:{} cas:{}", id, op, _seqno, _cas);
     }
 
     println!(
         "{} counts {:?} len:{}/{}",
-        j,
+        id,
         counts,
         index.len(),
         btmap.len()
@@ -227,12 +228,12 @@ fn do_nodiff_test(
 }
 
 fn do_diff_test(
-    j: usize,
+    id: usize,
     seed: u128,
     n: usize,
-    index: Mdb<u16, u64, u64>,
-    mut btmap: BTreeMap<u16, Entry>,
-) -> BTreeMap<u16, Entry> {
+    index: Mdb<Ky, u64, u64>,
+    mut btmap: BTreeMap<Ky, Entry>,
+) -> BTreeMap<Ky, Entry> {
     let mut rng = SmallRng::from_seed(seed.to_le_bytes());
 
     let mut counts = [0_usize; 12];
@@ -241,8 +242,8 @@ fn do_diff_test(
         let bytes = rng.gen::<[u8; 32]>();
         let mut uns = Unstructured::new(&bytes);
 
-        let op: DiffOp<u16, u64> = uns.arbitrary().unwrap();
-        // println!("{}-op -- {:?}", j, op);
+        let op: DiffOp<Ky, u64> = uns.arbitrary().unwrap();
+        // println!("{}-op -- {:?}", id, op);
         match op {
             DiffOp::Insert(key, val) => {
                 counts[0] += 1;
@@ -325,17 +326,12 @@ fn do_diff_test(
             DiffOp::Range((l, h)) if asc_range(&l, &h) => {
                 counts[8] += 1;
                 let r = (Bound::from(l), Bound::from(h));
-                compare_iter(j, index.range(r.clone()).unwrap(), btmap.range(r), true);
+                compare_iter(id, index.range(r).unwrap(), btmap.range(r), true);
             }
             DiffOp::Reverse((l, h)) if asc_range(&l, &h) => {
                 counts[9] += 1;
                 let r = (Bound::from(l), Bound::from(h));
-                compare_iter(
-                    j,
-                    index.reverse(r.clone()).unwrap(),
-                    btmap.range(r).rev(),
-                    false,
-                );
+                compare_iter(id, index.reverse(r).unwrap(), btmap.range(r).rev(), false);
             }
             DiffOp::Range((_, _)) | DiffOp::Reverse((_, _)) => {
                 counts[10] += 1;
@@ -349,7 +345,7 @@ fn do_diff_test(
 
     println!(
         "{} counts {:?} len:{}/{}",
-        j,
+        id,
         counts,
         index.len(),
         btmap.len()
@@ -412,7 +408,7 @@ impl<T> From<Limit<T>> for Bound<T> {
     }
 }
 
-fn merge_btmap(items: [BTreeMap<u16, Entry>; 2]) -> BTreeMap<u16, Entry> {
+fn merge_btmap(items: [BTreeMap<Ky, Entry>; 2]) -> BTreeMap<Ky, Entry> {
     let [one, mut two] = items;
 
     let mut thr = BTreeMap::new();
@@ -422,23 +418,23 @@ fn merge_btmap(items: [BTreeMap<u16, Entry>; 2]) -> BTreeMap<u16, Entry> {
             None => oe.clone(),
         };
         two.remove(key);
-        thr.insert(key.clone(), val);
+        thr.insert(*key, val);
     }
     for (key, val) in two.iter() {
         let val = match thr.get(key) {
             Some(v) => val.merge(v),
             None => val.clone(),
         };
-        thr.insert(key.clone(), val);
+        thr.insert(*key, val);
     }
 
     thr
 }
 
 fn compare_iter<'a>(
-    j: usize,
+    id: usize,
     mut index: impl Iterator<Item = Entry>,
-    btmap: impl Iterator<Item = (&'a u16, &'a Entry)>,
+    btmap: impl Iterator<Item = (&'a Ky, &'a Entry)>,
     frwrd: bool,
 ) {
     for (_key, val) in btmap {
@@ -453,10 +449,10 @@ fn compare_iter<'a>(
                     Ordering::Less if frwrd => (),
                     Ordering::Greater if !frwrd => (),
                     Ordering::Less | Ordering::Greater => {
-                        panic!("{} error miss entry {} {}", j, e.as_key(), val.as_key())
+                        panic!("{} error miss entry {} {}", id, e.as_key(), val.as_key())
                     }
                 },
-                None => panic!("{} error missing entry", j),
+                None => panic!("{} error missing entry", id),
             }
         }
     }

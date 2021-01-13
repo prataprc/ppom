@@ -123,31 +123,31 @@ fn do_test(
                 let b: Vec<(u8, u64)> = btmap.iter().map(|(k, v)| (*k, *v)).collect();
                 assert_eq!(a, b);
             }
-            Op::Range((l, h)) if asc_range(&l, &h) => {
+            Op::Range((low, high)) if asc_range(&low, &high) => {
                 counts[7] += 1;
-                let r = (Bound::from(l), Bound::from(h));
-                let a: Vec<(u8, u64)> = index.range(r.clone()).collect();
+                let r = (Bound::from(low), Bound::from(high));
+                let a: Vec<(u8, u64)> = index.range(r).collect();
                 let b: Vec<(u8, u64)> = btmap.range(r).map(|(k, v)| (*k, *v)).collect();
                 assert_eq!(a, b, "range {:?}", r);
             }
-            Op::Range((l, h)) => {
+            Op::Range((low, high)) => {
                 counts[7] += 1;
-                let r = (Bound::from(l), Bound::from(h));
-                let a: Vec<(u8, u64)> = index.range(r.clone()).collect();
+                let r = (Bound::from(low), Bound::from(high));
+                let a: Vec<(u8, u64)> = index.range(r).collect();
                 assert_eq!(a.len(), 0, "range {:?}", r);
             }
-            Op::Reverse((l, h)) if asc_range(&l, &h) => {
+            Op::Reverse((low, high)) if asc_range(&low, &high) => {
                 counts[8] += 1;
-                let r = (Bound::from(l), Bound::from(h));
-                let a: Vec<(u8, u64)> = index.reverse(r.clone()).collect();
+                let r = (Bound::from(low), Bound::from(high));
+                let a: Vec<(u8, u64)> = index.reverse(r).collect();
                 let b: Vec<(u8, u64)> =
                     btmap.range(r).rev().map(|(k, v)| (*k, *v)).collect();
                 assert_eq!(a, b, "reverse {:?}", r);
             }
-            Op::Reverse((l, h)) => {
+            Op::Reverse((low, high)) => {
                 counts[8] += 1;
-                let r = (Bound::from(l), Bound::from(h));
-                let a: Vec<(u8, u64)> = index.reverse(r.clone()).collect();
+                let r = (Bound::from(low), Bound::from(high));
+                let a: Vec<(u8, u64)> = index.reverse(r).collect();
                 assert_eq!(a.len(), 0, "reverse {:?}", r);
             }
         }

@@ -33,7 +33,7 @@ pub struct Opt {
 
 fn main() {
     let opts = Opt::from_args();
-    let seed = opts.seed.unwrap_or(random());
+    let seed = opts.seed.unwrap_or_else(random);
     let mut rng = SmallRng::from_seed(seed.to_le_bytes());
 
     let index: Mdb<u64, u64, u64> = Mdb::new("perf");

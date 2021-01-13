@@ -4,7 +4,7 @@ use std::{
     borrow::Borrow,
     cmp::{Ord, Ordering},
     fmt, marker,
-    ops::{Bound, Deref, DerefMut, RangeBounds},
+    ops::{Bound, DerefMut, RangeBounds},
 };
 
 use crate::{Error, Result};
@@ -14,6 +14,7 @@ use crate::{Error, Result};
 /// Refer package level documentation for brief description.
 ///
 /// [llrb]: https://en.wikipedia.org/wiki/Left-leaning_red-black_tree
+#[derive(Default)]
 pub struct OMap<K, V> {
     root: Option<Box<Node<K, V>>>,
     n_count: usize, // number of entries in the tree.
@@ -63,9 +64,9 @@ impl<K, V> OMap<K, V> {
         K: fmt::Debug,
         V: fmt::Debug,
     {
-        self.root
-            .as_ref()
-            .map(|n| n.as_ref().pretty_print("".to_string()));
+        if let Some(n) = self.root.as_ref() {
+            n.as_ref().pretty_print("".to_string())
+        }
     }
 }
 
@@ -120,7 +121,7 @@ impl<K, V> OMap<K, V> {
     where
         K: Ord + fmt::Debug,
     {
-        let root = self.root.as_ref().map(Deref::deref);
+        let root = self.root.as_deref();
         let (n_count, n_blacks, depth) = (0, 0, 1);
         let (n_count, _) =
             Self::validate_tree(root, is_red(root), n_count, n_blacks, depth)?;
@@ -139,7 +140,7 @@ impl<K, V> OMap<K, V> {
         V: Clone,
         Q: Ord + ?Sized,
     {
-        let mut node = self.root.as_ref().map(Deref::deref);
+        let mut node = self.root.as_deref();
         while let Some(nref) = node {
             node = match nref.key.borrow().cmp(key) {
                 Ordering::Less => nref.as_right_ref(),
@@ -167,7 +168,7 @@ impl<K, V> OMap<K, V> {
     /// }
     /// ```
     pub fn iter(&self) -> Iter<K, V> {
-        let node = self.root.as_ref().map(Deref::deref);
+        let node = self.root.as_deref();
 
         let mut paths = Vec::default();
         build_iter(IFlag::Left, node, &mut paths);
@@ -211,7 +212,7 @@ impl<K, V> OMap<K, V> {
         R: RangeBounds<Q>,
         Q: Ord + ?Sized,
     {
-        let root = self.root.as_ref().map(Deref::deref);
+        let root = self.root.as_deref();
 
         let mut paths = Vec::default();
         match range.start_bound() {
@@ -256,7 +257,7 @@ impl<K, V> OMap<K, V> {
         R: RangeBounds<Q>,
         Q: Ord + ?Sized,
     {
-        let root = self.root.as_ref().map(Deref::deref);
+        let root = self.root.as_deref();
 
         let mut paths = Vec::default();
         match range.end_bound() {
@@ -284,7 +285,7 @@ impl<K, V> OMap<K, V> {
         V: Clone,
         R: Rng,
     {
-        let mut nref = self.root.as_ref().map(Deref::deref)?;
+        let mut nref = self.root.as_deref()?;
 
         let mut at_depth = rng.gen::<u8>() % 40;
 
@@ -608,7 +609,7 @@ where
                     }
                     IFlag::Center => {
                         path.flag = IFlag::Right;
-                        let right = path.node.right.as_ref().map(AsRef::as_ref);
+                        let right = path.node.right.as_deref();
                         build_iter(IFlag::Left, right, &mut self.paths)
                     }
                     IFlag::Right => {
@@ -623,7 +624,7 @@ where
                     }
                     IFlag::Center => {
                         path.flag = IFlag::Left;
-                        let left = path.node.left.as_ref().map(AsRef::as_ref);
+                        let left = path.node.left.as_deref();
                         build_iter(IFlag::Right, left, &mut self.paths)
                     }
                     IFlag::Left => {
@@ -750,12 +751,12 @@ impl<K, V> Node<K, V> {
 
     #[inline]
     fn as_left_ref(&self) -> Option<&Node<K, V>> {
-        self.left.as_ref().map(AsRef::as_ref)
+        self.left.as_deref()
     }
 
     #[inline]
     fn as_right_ref(&self) -> Option<&Node<K, V>> {
-        self.right.as_ref().map(AsRef::as_ref)
+        self.right.as_deref()
     }
 
     #[inline]
@@ -795,8 +796,12 @@ impl<K, V> Node<K, V> {
             false => println!("{}(r)<{:?},{:?}>", prefix, self.key, self.value),
         }
         prefix.push_str("  ");
-        self.left.as_ref().map(|l| l.pretty_print(prefix.clone()));
-        self.right.as_ref().map(|r| r.pretty_print(prefix.clone()));
+        if let Some(l) = self.left.as_ref() {
+            l.pretty_print(prefix.clone())
+        }
+        if let Some(r) = self.right.as_ref() {
+            r.pretty_print(prefix)
+        }
     }
 }
 
@@ -821,8 +826,8 @@ fn build_iter<'a, K, V>(
     if let Some(node) = node {
         let item = Fragment { flag, node };
         let node = match flag {
-            IFlag::Left => item.node.left.as_ref().map(AsRef::as_ref),
-            IFlag::Right => item.node.right.as_ref().map(AsRef::as_ref),
+            IFlag::Left => item.node.left.as_deref(),
+            IFlag::Right => item.node.right.as_deref(),
             IFlag::Center => unreachable!(),
         };
         paths.push(item);
@@ -840,8 +845,8 @@ fn find_start<'a, K, V, Q>(
     Q: Ord + ?Sized,
 {
     if let Some(node) = node {
-        let left = node.left.as_ref().map(AsRef::as_ref);
-        let right = node.right.as_ref().map(AsRef::as_ref);
+        let left = node.left.as_deref();
+        let right = node.right.as_deref();
 
         let cmp = node.key.borrow().cmp(low);
 
@@ -871,8 +876,8 @@ fn find_end<'a, K, V, Q>(
     Q: Ord + ?Sized,
 {
     if let Some(node) = node {
-        let left = node.left.as_ref().map(AsRef::as_ref);
-        let right = node.right.as_ref().map(AsRef::as_ref);
+        let left = node.left.as_deref();
+        let right = node.right.as_deref();
 
         let cmp = node.key.borrow().cmp(high);
 
