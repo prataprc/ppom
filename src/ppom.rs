@@ -106,7 +106,7 @@ impl<K, V> OMap<K, V> {
         }
     }
 
-    /// Validate LLRB tree with following rules:
+    /// Validate tree with following rules:
     ///
     /// * From root to any leaf, no consecutive reds allowed in its path.
     /// * Number of blacks should be same under left child and right child.
@@ -762,7 +762,7 @@ where
     }
 }
 
-/// Node corresponds to a single entry in Llrb instance.
+/// Node corresponds to a single entry in tree.
 #[derive(Clone, Debug)]
 pub struct Node<K, V> {
     key: K,

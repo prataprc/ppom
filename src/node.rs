@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use mkit::{data::Diff, db};
 
-// Node corresponds to a single entry in Llrb instance.
+// Node corresponds to a single entry in Mdb instance.
 #[derive(Clone)]
 pub struct Node<K, V, D> {
     pub entry: Arc<db::Entry<K, V, D>>,
