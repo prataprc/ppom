@@ -27,8 +27,11 @@ pub struct Opt {
     #[structopt(long = "gets", default_value = "0")] // default 1M
     gets: usize,
 
-    #[structopt(long = "threads", default_value = "1")]
-    threads: usize,
+    #[structopt(long = "writers", default_value = "1")]
+    writers: usize,
+
+    #[structopt(long = "readers", default_value = "1")]
+    readers: usize,
 }
 
 fn main() {
@@ -48,14 +51,14 @@ fn main() {
     println!("loaded {} items in {:?}", opts.loads, start.elapsed());
 
     let mut handles = vec![];
-    for j in 0..opts.threads {
+    for j in 0..opts.writers {
         let (mut opts, index) = (opts.clone(), index.clone());
         opts.gets = 0;
         let seed = seed + ((j as u128) * 100);
         let h = thread::spawn(move || do_incremental(j, seed, opts, index));
         handles.push(h);
     }
-    for j in opts.threads..(opts.threads * 2) {
+    for j in opts.writers..(opts.writers + opts.readers) {
         let (mut opts, index) = (opts.clone(), index.clone());
         opts.sets = 0;
         opts.dels = 0;
