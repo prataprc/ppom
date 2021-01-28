@@ -93,6 +93,12 @@ impl<K, V, D> Mdb<K, V, D> {
         inner.n_count
     }
 
+    /// Return number of entries marked as deleted.
+    pub fn deleted_count(&self) -> usize {
+        let inner = Arc::clone(&self.inner.read());
+        inner.n_deleted
+    }
+
     /// Return whether index is empty.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
