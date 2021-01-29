@@ -341,6 +341,24 @@ impl<K, V, D> Mdb<K, V, D> {
 
         Ok(Wr { seqno, old_entry })
     }
+
+    pub fn commit<I>(&mut self, iter: I) -> Result<usize>
+    where
+        K: Clone + PartialEq + Ord,
+        V: Clone + Diff<Delta = D>,
+        D: Clone + From<V>,
+        I: Iterator<Item = db::Entry<K, V, D>>,
+    {
+        let mut inner = self.inner.write();
+        let (new_inner, n) = {
+            let (ir, n) = inner.commit(iter)?;
+            let (new_inner, _) = ir.into_root();
+            (new_inner, n)
+        };
+        *inner = Arc::new(new_inner);
+
+        Ok(n)
+    }
 }
 
 impl<K, V, D> Mdb<K, V, D> {
@@ -564,6 +582,66 @@ impl<K, V, D> Inner<K, V, D> {
         let old = old.as_ref().map(|old| old.as_ref().clone());
 
         Ok(Ir::Root { inner, old })
+    }
+
+    fn commit<I>(&self, iter: I) -> Result<(Ir<K, V, D>, usize)>
+    where
+        K: Clone + PartialEq + Ord,
+        V: Clone + Diff<Delta = D>,
+        D: Clone + From<V>,
+        I: Iterator<Item = db::Entry<K, V, D>>,
+    {
+        let mut n_entries = 0;
+        let mut commit_seqno = self.seqno;
+        let mut root = self.root.as_ref().map(|root| Arc::clone(root));
+        let mut n_count = self.n_count;
+        let mut n_deleted = self.n_deleted;
+
+        for entry in iter {
+            if entry.to_seqno() <= self.seqno {
+                err_at!(
+                    Invalid,
+                    msg: "commit entry {} older than index snapshot {}",
+                    entry.to_seqno(),
+                    self.seqno
+                )?;
+            }
+            n_entries += 1;
+
+            commit_seqno = cmp::max(entry.to_seqno(), commit_seqno);
+            root = {
+                let is_deleted = entry.is_deleted();
+                let (root, old) = self
+                    .do_commit(root.as_ref().map(Borrow::borrow), entry)?
+                    .into_res();
+                match (is_deleted, old) {
+                    (true, Some(old)) if !old.is_deleted() => {
+                        n_deleted = n_deleted.saturating_add(1)
+                    }
+                    (false, Some(old)) if old.is_deleted() => {
+                        n_deleted = n_deleted.saturating_sub(1)
+                    }
+                    (true, None) => {
+                        n_deleted = n_deleted.saturating_add(1);
+                        n_count = n_count.saturating_add(1);
+                    }
+                    (_, None) => {
+                        n_count = n_count.saturating_add(1);
+                    }
+                    _ => (),
+                };
+                root
+            };
+        }
+
+        let inner = Inner {
+            root,
+            seqno: commit_seqno,
+            n_count,
+            n_deleted,
+        };
+
+        Ok((Ir::Root { inner, old: None }, n_entries))
     }
 
     fn do_set(
@@ -825,6 +903,48 @@ impl<K, V, D> Inner<K, V, D> {
         let [left, sub_node] = self.do_remove_min(node.as_left_ref());
         node.left = left.map(Arc::new);
         [Some(fixup(node)), sub_node]
+    }
+
+    fn do_commit(
+        &self,
+        node: Option<&Node<K, V, D>>,
+        entry: db::Entry<K, V, D>,
+    ) -> Result<Ir<K, V, D>>
+    where
+        K: Clone + PartialEq + Ord,
+        V: Clone + Diff<Delta = D>,
+        D: Clone + From<V>,
+    {
+        let mut node: Node<K, V, D> = match node {
+            Some(node) => node.clone(),
+            None => {
+                let (root, old) = (Some(Arc::new(entry.into())), None);
+                return Ok(Ir::Res { root, old });
+            }
+        };
+
+        let (node, old) = match node.as_key().cmp(entry.as_key()) {
+            Ordering::Greater => {
+                let left = node.left.as_ref().map(Borrow::borrow);
+                let (root, old) = self.do_commit(left, entry)?.into_res();
+                node.left = root;
+                (walkuprot_23(node), old)
+            }
+            Ordering::Less => {
+                let right = node.right.as_ref().map(Borrow::borrow);
+                let (root, old) = self.do_commit(right, entry)?.into_res();
+                node.right = root;
+                (walkuprot_23(node), old)
+            }
+            Ordering::Equal => {
+                let old = node.entry.clone();
+                node.commit(entry);
+                (node, Some(old))
+            }
+        };
+        let root = Some(Arc::new(node));
+
+        Ok(Ir::Res { root, old })
     }
 }
 

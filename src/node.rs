@@ -34,6 +34,15 @@ impl<K, V, D> Node<K, V, D> {
         self.entry = Arc::new(entry);
     }
 
+    pub fn commit(&mut self, other: db::Entry<K, V, D>)
+    where
+        K: PartialEq + Clone,
+        V: Clone + Diff<Delta = D>,
+        D: Clone + From<V>,
+    {
+        self.entry = Arc::new(self.entry.as_ref().merge(&other));
+    }
+
     pub fn delete(&mut self, seqno: u64)
     where
         K: Clone,

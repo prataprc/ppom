@@ -32,9 +32,9 @@ fn test_mdb_nodiff() {
 
     let mut handles = vec![];
     for id in 0..n_threads {
-        let (a, b) = (index.clone(), btmap.clone());
+        let (index, bt) = (index.clone(), btmap.clone());
         let seed = seed + ((id as u128) * 100);
-        let h = thread::spawn(move || do_nodiff_test(id, seed, n_incr, a, b));
+        let h = thread::spawn(move || do_nodiff_test(id, seed, n_incr, index, bt));
         handles.push(h);
     }
 
@@ -89,9 +89,9 @@ fn test_mdb_diff() {
 
     let mut handles = vec![];
     for id in 0..n_threads {
-        let (a, b) = (index.clone(), btmap.clone());
+        let (index, bt) = (index.clone(), btmap.clone());
         let seed = seed + ((id as u128) * 100);
-        let h = thread::spawn(move || do_diff_test(id, seed, n_incr, a, b));
+        let h = thread::spawn(move || do_diff_test(id, seed, n_incr, index, bt));
         handles.push(h);
     }
 
@@ -111,6 +111,55 @@ fn test_mdb_diff() {
         assert_eq!(val.as_key(), x);
         assert_eq!(val, *y, "for key {}", val.as_key());
     }
+}
+
+#[test]
+fn test_commit() {
+    let seed: u128 = random();
+    // let seed: u128 = 101184856431704577826207314398605498816;
+    println!("test_commit seed {}", seed);
+
+    let mut btmap = BTreeMap::<u16, db::Entry<u16, u64, u64>>::new();
+
+    let mut mdb1 = load_index(seed, 0 /*seqno*/, 10_000, 10_000, 1000, 1000);
+    for e in mdb1.iter().unwrap() {
+        btmap.insert(e.to_key(), e);
+    }
+    let mdb2 = load_index(seed + 100, mdb1.to_seqno(), 10_000, 10_000, 1000, 1000);
+    for e in mdb2.iter().unwrap() {
+        let e = match btmap.get(e.as_key()) {
+            Some(entry) => entry.merge(&e),
+            None => e,
+        };
+        btmap.insert(e.to_key(), e);
+    }
+
+    let n = mdb1.commit(mdb2.iter().unwrap()).unwrap();
+
+    assert_eq!(n, mdb2.len());
+    assert_eq!(mdb1.len(), btmap.len());
+
+    let mut iter1 = mdb1.iter().unwrap();
+    let mut iter2 = btmap.iter();
+
+    let mut n_deleted = 0;
+    let mut seqno = 0;
+    loop {
+        match iter2.next() {
+            Some((_, e2)) => {
+                if e2.is_deleted() {
+                    n_deleted += 1;
+                }
+                seqno = cmp::max(seqno, e2.to_seqno());
+                let e1 = iter1.next().unwrap();
+                assert_eq!(&e1, e2)
+            }
+            None => break,
+        }
+    }
+    assert_eq!(iter1.next(), None);
+    assert_eq!(n_deleted, mdb1.deleted_count());
+    assert_eq!(seqno, mdb1.to_seqno());
 }
 
 fn do_nodiff_test(
@@ -464,4 +513,47 @@ fn compare_old_entry(index: Option<Entry>, btmap: Option<Entry>) {
         (None, Some(btmap)) => panic!("{:?}", btmap),
         (Some(e), Some(x)) => assert!(e.contains(&x)),
     }
+}
+
+fn load_index(
+    seed: u128,
+    seqno: u64,
+    sets: u64,
+    inserts: u64,
+    rems: u64,
+    dels: u64,
+) -> Mdb<u16, u64, u64> {
+    let mut rng = SmallRng::from_seed(seed.to_le_bytes());
+    let index = Mdb::new("testing");
+    index.set_seqno(seqno);
+
+    let (mut s, mut i, mut d, mut r) = (sets, inserts, dels, rems);
+    while (s + i + d + r) > 0 {
+        let key: u16 = rng.gen();
+        let value: u64 = rng.gen();
+        // println!("{} {}", (s + i + d + r), key);
+        match rng.gen::<u64>() % (s + i + d + r) {
+            k if k < s => {
+                index.set(key, value).ok();
+                s -= 1;
+            }
+            k if k < (s + i) => {
+                index.insert(key, value).ok();
+                i -= 1;
+            }
+            k => match index.get(&key) {
+                Ok(entry) if !entry.is_deleted() && (k < (s + i + d)) => {
+                    index.delete(&key).unwrap();
+                    d -= 1;
+                }
+                Ok(entry) if !entry.is_deleted() => {
+                    index.remove(&key).unwrap();
+                    r -= 1;
+                }
+                _ => (),
+            },
+        }
+    }
+
+    index
 }

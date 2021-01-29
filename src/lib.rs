@@ -163,6 +163,7 @@ pub enum Error {
     Fatal(String, String),
     KeyNotFound(String, String),
     InvalidCAS(String, String),
+    Invalid(String, String),
 }
 
 impl fmt::Display for Error {
@@ -173,6 +174,7 @@ impl fmt::Display for Error {
             Fatal(p, msg) => write!(f, "{} Fatal: {}", p, msg),
             KeyNotFound(p, msg) => write!(f, "{} KeyNotFound: {}", p, msg),
             InvalidCAS(p, msg) => write!(f, "{} InvalidCAS: {}", p, msg),
+            Invalid(p, msg) => write!(f, "{} Invalid: {}", p, msg),
         }
     }
 }
