@@ -342,7 +342,7 @@ impl<K, V, D> Mdb<K, V, D> {
         Ok(Wr { seqno, old_entry })
     }
 
-    pub fn commit<I>(&mut self, iter: I) -> Result<usize>
+    pub fn commit<I>(&self, iter: I) -> Result<usize>
     where
         K: Clone + PartialEq + Ord,
         V: Clone + Diff<Delta = D>,

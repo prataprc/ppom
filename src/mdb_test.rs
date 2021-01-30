@@ -121,7 +121,7 @@ fn test_commit() {
 
     let mut btmap = BTreeMap::<u16, db::Entry<u16, u64, u64>>::new();
 
-    let mut mdb1 = load_index(seed, 0 /*seqno*/, 10_000, 10_000, 1000, 1000);
+    let mdb1 = load_index(seed, 0 /*seqno*/, 10_000, 10_000, 1000, 1000);
     for e in mdb1.iter().unwrap() {
         btmap.insert(e.to_key(), e);
     }
@@ -140,22 +140,17 @@ fn test_commit() {
     assert_eq!(mdb1.len(), btmap.len());
 
     let mut iter1 = mdb1.iter().unwrap();
-    let mut iter2 = btmap.iter();
+    let iter2 = btmap.iter();
 
     let mut n_deleted = 0;
     let mut seqno = 0;
-    loop {
-        match iter2.next() {
-            Some((_, e2)) => {
-                if e2.is_deleted() {
-                    n_deleted += 1;
-                }
-                seqno = cmp::max(seqno, e2.to_seqno());
-                let e1 = iter1.next().unwrap();
-                assert_eq!(&e1, e2)
-            }
-            None => break,
+    for (_, e2) in iter2 {
+        if e2.is_deleted() {
+            n_deleted += 1;
         }
+        seqno = cmp::max(seqno, e2.to_seqno());
+        let e1 = iter1.next().unwrap();
+        assert_eq!(&e1, e2)
     }
     assert_eq!(iter1.next(), None);
     assert_eq!(n_deleted, mdb1.deleted_count());
@@ -527,28 +522,28 @@ fn load_index(
     let index = Mdb::new("testing");
     index.set_seqno(seqno);
 
-    let (mut s, mut i, mut d, mut r) = (sets, inserts, dels, rems);
-    while (s + i + d + r) > 0 {
+    let (mut se, mut it, mut de, mut rm) = (sets, inserts, dels, rems);
+    while (se + it + de + rm) > 0 {
         let key: u16 = rng.gen();
         let value: u64 = rng.gen();
-        // println!("{} {}", (s + i + d + r), key);
-        match rng.gen::<u64>() % (s + i + d + r) {
-            k if k < s => {
+        // println!("{} {}", (se + it + de + rm), key);
+        match rng.gen::<u64>() % (se + it + de + rm) {
+            k if k < se => {
                 index.set(key, value).ok();
-                s -= 1;
+                se -= 1;
             }
-            k if k < (s + i) => {
+            k if k < (se + it) => {
                 index.insert(key, value).ok();
-                i -= 1;
+                it -= 1;
             }
             k => match index.get(&key) {
-                Ok(entry) if !entry.is_deleted() && (k < (s + i + d)) => {
+                Ok(entry) if !entry.is_deleted() && (k < (se + it + de)) => {
                     index.delete(&key).unwrap();
-                    d -= 1;
+                    de -= 1;
                 }
                 Ok(entry) if !entry.is_deleted() => {
                     index.remove(&key).unwrap();
-                    r -= 1;
+                    rm -= 1;
                 }
                 _ => (),
             },
