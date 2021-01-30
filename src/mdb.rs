@@ -362,6 +362,8 @@ impl<K, V, D> Mdb<K, V, D> {
 }
 
 impl<K, V, D> Mdb<K, V, D> {
+    /// Get entry from index for `key`. If key is not found return
+    /// [Error::KeyNotFound]
     pub fn get<Q>(&self, key: &Q) -> Result<db::Entry<K, V, D>>
     where
         K: Clone + Borrow<Q>,
@@ -373,11 +375,13 @@ impl<K, V, D> Mdb<K, V, D> {
         inner.get(key)
     }
 
+    /// For full table scan.
     pub fn iter(&self) -> Result<Iter<K, V, D>> {
         let inner = Arc::clone(&self.inner.read());
         Ok(inner.iter())
     }
 
+    /// Iterate over entries within the specifed `range`.
     pub fn range<R, Q>(&self, range: R) -> Result<Range<K, V, D, R, Q>>
     where
         K: Borrow<Q>,
@@ -388,6 +392,9 @@ impl<K, V, D> Mdb<K, V, D> {
         Ok(inner.range(range))
     }
 
+    /// Reverse iterate over entries withing specified `range`. While
+    /// `range` method iterate entries from start_bound to end_bound
+    /// `reverse` method iterate entries from end_bound to start_bound.
     pub fn reverse<R, Q>(&self, range: R) -> Result<Reverse<K, V, D, R, Q>>
     where
         K: Borrow<Q>,

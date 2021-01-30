@@ -688,7 +688,7 @@ where
 
 impl<'a, K, V, R, Q> Iterator for Reverse<'a, K, V, R, Q>
 where
-    K: Clone + Borrow<Q> + fmt::Debug,
+    K: Clone + Borrow<Q>,
     V: Clone,
     Q: Ord + ?Sized,
     R: RangeBounds<Q>,
