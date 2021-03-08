@@ -11,6 +11,12 @@ license = "MIT"
 readme = "README.md"
 edition = "2018"
 
+[profile.release]
+debug = true
+
+[profile.bench]
+debug = true
+
 [[bin]]
 name = "perf"
 required-features = ["perf"]
@@ -19,7 +25,6 @@ required-features = ["perf"]
 mkit = { path = "../mkit", version = "0.3.0" }
 rand = { version = "0.7.3", features = ["small_rng"] }
 arbitrary = { version = "0.4.7", features = ["derive"] }
-
 structopt = { version = "0.3.20", default-features = false, optional = true }
 
 [dev-dependencies]
