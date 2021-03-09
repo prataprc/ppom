@@ -4,12 +4,12 @@ version = "0.5.0"
 description = "Left Leaning Red Black index in Rust-lang"
 repository = "https://github.com/bnclabs/ppom"
 documentation = "https://docs.rs/ppom"
-authors = ["prataprc <prataprc@gmail.com>"]
-keywords = ["storage", "llrb", "sorting", "data-structure"]
+keywords = ["storage", "llrb", "indexing", "data-structure"]
 categories = ["algorithms", "database", "data-structure"]
+authors = ["prataprc <prataprc@gmail.com>"]
 license = "MIT"
-readme = "README.md"
 edition = "2018"
+readme = "README.md"
 
 [profile.release]
 debug = true
@@ -22,9 +22,9 @@ name = "perf"
 required-features = ["perf"]
 
 [dependencies]
+arbitrary = { version = "0.4.7", features = ["derive"] }
 mkit = { path = "../mkit", version = "0.3.0" }
 rand = { version = "0.7.3", features = ["small_rng"] }
-arbitrary = { version = "0.4.7", features = ["derive"] }
 structopt = { version = "0.3.20", default-features = false, optional = true }
 
 [dev-dependencies]
