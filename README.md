@@ -22,20 +22,23 @@ Refer to [rustdoc](https://docs.rs/ppom) for details.
 
 **Useful links**
 
-* Refer to this [Wikipedia link][wikilink] for more information on LLRB algorithm.
+* [Wikipedia link][wiki-llrb] on LLRB algorithm.
+* [Wikipedia link][wiki-pers] on persistent data structure.
 * [Discussion][disc1] on the design choice over get() and range() API.
 
 Contribution
 ------------
 
-* Simple workflow. Fork, modify and raise a pull request.
-* Before making a PR,
+* Simple workflow. Fork - Modify - Pull request.
+* Before creating a PR,
+  * Run `make build` to confirm all versions of build is passing with
+    0 warnings and 0 errors.
   * Run `check.sh` with 0 warnings, 0 errors and all testcases passing.
-  * Run `cargo +nightly clippy --all-targets --all-features` to fix clippy issues.
+  * Run `perf.sh` with 0 warnings, 0 errors and all testcases passing.
   * [Install][spellcheck] and run `cargo spellcheck` to remove common spelling mistakes.
 * [Developer certificate of origin][dco] is preferred.
 
-[wikilink]: https://en.wikipedia.org/wiki/Left-leaning_red%E2%80%93black_tree
+[wiki-llrb]: https://en.wikipedia.org/wiki/Left-leaning_red%E2%80%93black_tree
+[wiki-pers]: https://en.wikipedia.org/wiki/Persistent_data_structure
 [disc1]: https://users.rust-lang.org/t/what-would-be-proper-api-for-index-get/28730/5
 [dco]: https://developercertificate.org/
-
