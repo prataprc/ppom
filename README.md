@@ -3,7 +3,6 @@
 Persistent Ordered Map
 ======================
 
-
 This package implements LLRB, Left Leaning Red Black, tree a popular
 data structured, with following features:
 
@@ -19,6 +18,10 @@ data structured, with following features:
 * [x] Read optimized.
 
 Refer to [rustdoc](https://docs.rs/ppom) for details.
+
+Note that, this project is a continuation of [llrb-index][llrb-index] which
+originally implemented an ephemeral OMap, which is now available here as
+ppom::OMap.
 
 **Useful links**
 
@@ -42,3 +45,4 @@ Contribution
 [wiki-pers]: https://en.wikipedia.org/wiki/Persistent_data_structure
 [disc1]: https://users.rust-lang.org/t/what-would-be-proper-api-for-index-get/28730/5
 [dco]: https://developercertificate.org/
+[llrb-index]: https://github.com/bnclabs/llrb-index
