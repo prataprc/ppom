@@ -1,11 +1,11 @@
 [package]
 name = "ppom"
-version = "0.5.0"
+version = "0.6.0"
 description = "Left Leaning Red Black index in Rust-lang"
 repository = "https://github.com/bnclabs/ppom"
 documentation = "https://docs.rs/ppom"
-keywords = ["storage", "llrb", "indexing", "data-structure"]
-categories = ["algorithms", "database", "data-structure"]
+keywords = ["storage", "llrb", "indexing", "data-structures"]
+categories = ["algorithms", "database", "data-structures"]
 authors = ["prataprc <prataprc@gmail.com>"]
 license = "MIT"
 edition = "2018"

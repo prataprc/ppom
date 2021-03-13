@@ -342,6 +342,10 @@ impl<K, V, D> Mdb<K, V, D> {
         Ok(Wr { seqno, old_entry })
     }
 
+    /// Commit a latest batch of mutations into this snapshot, there by
+    /// creating a new snapshot. It is pre-requisite that the new batch
+    /// of mutation and its seqno must all be newer than this index
+    /// snapshot's latest seqno.
     pub fn commit<I>(&self, iter: I) -> Result<usize>
     where
         K: Clone + PartialEq + Ord,
