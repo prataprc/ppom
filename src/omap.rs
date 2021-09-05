@@ -9,6 +9,9 @@ use std::{
 
 use crate::{Error, Result};
 
+// IMPORTANT: OMap type does not use Node from node module, instead it implements
+// its own Node in this module.
+
 /// Ephemeral ordered-map type using [left-leaning-red-black][llrb] tree.
 ///
 /// Refer package level documentation for brief description.

@@ -7,17 +7,22 @@ use std::collections::BTreeMap;
 
 #[test]
 fn test_omap() {
+    let ops = 1_000_000;
     let seed: u128 = random();
     // let seed: u128 = 46462177783710469322936477079324309004;
-    println!("test_omap {}", seed);
     let mut rng = SmallRng::from_seed(seed.to_le_bytes());
+    let skew_remove: u8 = rng.gen::<u8>() % 2;
+    println!(
+        "test_omap seed:{}, ops:{} skew_remove:{}",
+        seed, ops, skew_remove
+    );
 
     let mut index: OMap<u8, u64> = OMap::new();
     let mut btmap: BTreeMap<u8, u64> = BTreeMap::new();
 
-    let mut counts = [0_usize; 10];
+    let mut counts = [0_usize; 11];
 
-    for _i in 0..1_000_000 {
+    for _i in 0..ops {
         let bytes = rng.gen::<[u8; 32]>();
         let mut uns = Unstructured::new(&bytes);
 
@@ -101,6 +106,38 @@ fn test_omap() {
                 index.extend(items.clone());
                 btmap.extend(items.clone())
             }
+            Op::Random => {
+                counts[10] += 1;
+                match index.random(&mut rng) {
+                    Some((key, value)) => match btmap.get(&key) {
+                        Some(val) => assert_eq!(value, *val, "for key {:?}", key),
+                        None => panic!("key missing {:?}", key),
+                    },
+                    None => assert!(btmap.len() == 0, "unexpected len: {}", btmap.len()),
+                }
+            }
+        }
+
+        // skew the ops towards more remove, so that we end up applying ops on empty
+        // index.
+        match skew_remove {
+            0 => (),
+            1 => {
+                for _i in 0..skew_remove {
+                    match index.random(&mut rng) {
+                        Some((key, _)) => {
+                            match (index.remove(&key), btmap.remove(&key)) {
+                                (Some(v), Some(r)) => {
+                                    assert_eq!(v, r, "for key {}", key)
+                                }
+                                (v, r) => panic!("unexpected {:?} != {:?}", v, r),
+                            }
+                        }
+                        None => (),
+                    }
+                }
+            }
+            _ => unreachable!(),
         }
     }
 
@@ -122,6 +159,7 @@ enum Op<K, V> {
     Range((Limit<K>, Limit<K>)),
     Reverse((Limit<K>, Limit<K>)),
     Extend(Vec<(K, V)>),
+    Random,
     Validate,
 }
 
