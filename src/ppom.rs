@@ -10,6 +10,9 @@ use std::{
 use super::*;
 use crate::{Error, Result};
 
+// IMPORTANT: ppom::OMap type does not use Node from node module, instead it
+// implements its own Node in this module.
+
 /// Fully Persistent array using [Left-leaning-red-black][llrb] tree.
 ///
 /// Refer package level documentation for brief description.

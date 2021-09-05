@@ -6,7 +6,7 @@ use super::*;
 use std::collections::BTreeMap;
 
 #[test]
-fn test_omap() {
+fn test_simple_omap() {
     let n_ops = 1_000_000;
     let seed: u128 = random();
     // let seed: u128 = 194689585675773936160943145888738646518;
