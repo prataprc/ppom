@@ -7,26 +7,36 @@ use std::collections::BTreeMap;
 
 #[test]
 fn test_omap() {
-    let ops = 1_000_000;
+    let n_ops = 1_000_000;
     let seed: u128 = random();
-    // let seed: u128 = 46462177783710469322936477079324309004;
+    // let seed: u128 = 194689585675773936160943145888738646518;
+
+    run_with_key::<u8>("u8-key", seed, n_ops, 2);
+    run_with_key::<u16>("16-key", seed, n_ops, 5000);
+    run_with_key::<u32>("32-key", seed, n_ops, 5000);
+}
+
+fn run_with_key<K>(prefix: &str, seed: u128, n_ops: usize, iter_clamp: usize)
+where
+    K: Ord + Copy + Clone + PartialEq + std::fmt::Display + std::fmt::Debug + Arbitrary,
+{
     let mut rng = SmallRng::from_seed(seed.to_le_bytes());
     let skew_remove: u8 = rng.gen::<u8>() % 2;
     println!(
-        "test_omap seed:{}, ops:{} skew_remove:{}",
-        seed, ops, skew_remove
+        "test_omap {} seed:{}, n_ops:{} skew_remove:{}",
+        prefix, seed, n_ops, skew_remove
     );
 
-    let mut index: OMap<u8, u64> = OMap::new();
-    let mut btmap: BTreeMap<u8, u64> = BTreeMap::new();
+    let mut index: OMap<K, u64> = OMap::new();
+    let mut btmap: BTreeMap<K, u64> = BTreeMap::new();
 
     let mut counts = [0_usize; 11];
 
-    for _i in 0..ops {
+    for i in 0..n_ops {
         let bytes = rng.gen::<[u8; 32]>();
         let mut uns = Unstructured::new(&bytes);
 
-        let op: Op<u8, u64> = uns.arbitrary().unwrap();
+        let op: Op<K, u64> = uns.arbitrary().unwrap();
         // println!("op -- {:?}", op);
         match op {
             Op::Len => {
@@ -55,10 +65,11 @@ fn test_omap() {
                     (Some(_), None) => panic!("remove no key {} in btree", key),
                 }
             }
-            Op::Validate => {
+            Op::Validate if (i % iter_clamp) == 0 => {
                 counts[4] += 1;
                 index.validate().unwrap();
             }
+            Op::Validate => (),
             Op::Get(key) => {
                 counts[5] += 1;
                 match (index.get(&key), btmap.get(&key)) {
@@ -68,39 +79,44 @@ fn test_omap() {
                     (Some(_), None) => panic!("get no key {} in btree", key),
                 }
             }
-            Op::Iter => {
+            Op::Iter if (i % iter_clamp) == 0 => {
                 counts[6] += 1;
-                let a: Vec<(u8, u64)> = index.iter().collect();
-                let b: Vec<(u8, u64)> = btmap.iter().map(|(k, v)| (*k, *v)).collect();
+                let a: Vec<(K, u64)> = index.iter().collect();
+                let b: Vec<(K, u64)> = btmap.iter().map(|(k, v)| (*k, *v)).collect();
                 assert_eq!(a, b);
             }
-            Op::Range((low, high)) if asc_range(&low, &high) => {
+            Op::Iter => (),
+            Op::Range((low, high)) if asc_range(&low, &high) && (i % iter_clamp) == 0 => {
                 counts[7] += 1;
                 let r = (Bound::from(low), Bound::from(high));
-                let a: Vec<(u8, u64)> = index.range(r).collect();
-                let b: Vec<(u8, u64)> = btmap.range(r).map(|(k, v)| (*k, *v)).collect();
+                let a: Vec<(K, u64)> = index.range(r).collect();
+                let b: Vec<(K, u64)> = btmap.range(r).map(|(k, v)| (*k, *v)).collect();
                 assert_eq!(a, b, "range {:?}", r);
             }
-            Op::Range((low, high)) => {
+            Op::Range((low, high)) if (i % iter_clamp) == 0 => {
                 counts[7] += 1;
                 let r = (Bound::from(low), Bound::from(high));
-                let a: Vec<(u8, u64)> = index.range(r).collect();
+                let a: Vec<(K, u64)> = index.range(r).collect();
                 assert_eq!(a.len(), 0, "range {:?}", r);
             }
-            Op::Reverse((low, high)) if asc_range(&low, &high) => {
+            Op::Range((_, _)) => (),
+            Op::Reverse((low, high))
+                if asc_range(&low, &high) && (i % iter_clamp) == 0 =>
+            {
                 counts[8] += 1;
                 let r = (Bound::from(low), Bound::from(high));
-                let a: Vec<(u8, u64)> = index.reverse(r).collect();
-                let b: Vec<(u8, u64)> =
+                let a: Vec<(K, u64)> = index.reverse(r).collect();
+                let b: Vec<(K, u64)> =
                     btmap.range(r).rev().map(|(k, v)| (*k, *v)).collect();
                 assert_eq!(a, b, "reverse {:?}", r);
             }
-            Op::Reverse((low, high)) => {
+            Op::Reverse((low, high)) if (i % iter_clamp) == 0 => {
                 counts[8] += 1;
                 let r = (Bound::from(low), Bound::from(high));
-                let a: Vec<(u8, u64)> = index.reverse(r).collect();
+                let a: Vec<(K, u64)> = index.reverse(r).collect();
                 assert_eq!(a.len(), 0, "reverse {:?}", r);
             }
+            Op::Reverse((_, _)) => (),
             Op::Extend(items) => {
                 counts[9] += 1;
                 index.extend(items.clone());
@@ -141,8 +157,8 @@ fn test_omap() {
         }
     }
 
-    let a: Vec<(u8, u64)> = index.iter().collect();
-    let b: Vec<(u8, u64)> = btmap.iter().map(|(k, v)| (*k, *v)).collect();
+    let a: Vec<(K, u64)> = index.iter().collect();
+    let b: Vec<(K, u64)> = btmap.iter().map(|(k, v)| (*k, *v)).collect();
     assert_eq!(a, b);
 
     println!("counts {:?} len:{}/{}", counts, index.len(), btmap.len());
