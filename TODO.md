@@ -3,3 +3,5 @@
 * Implement `iter_mut`, `range_mut`, `reverse_mut` for OMap.
 * Implement iter(), range(), as double-ended iterator and remove
   reverse() method
+* Mark Mdb and associted types/traits as deprecated, we are planning to
+  use rdms::mdb
