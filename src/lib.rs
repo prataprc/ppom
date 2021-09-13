@@ -144,17 +144,6 @@ macro_rules! err_at {
     }};
 }
 
-pub mod arc;
-mod mdb;
-mod mdb_node;
-mod mdb_op;
-mod omap;
-pub mod rc;
-
-pub use mdb::Mdb;
-pub use mdb_op::Write;
-pub use omap::OMap;
-
 /// Error variants that are returned by this package's API.
 ///
 /// Each variant carries a prefix, typically identifying the
@@ -189,3 +178,14 @@ impl error::Error for Error {}
 
 /// Type alias for Result return type, used by this package.
 pub type Result<T> = result::Result<T, Error>;
+
+pub mod arc;
+mod mdb;
+mod mdb_node;
+mod mdb_op;
+mod omap;
+pub mod rc;
+
+pub use mdb::Mdb;
+pub use mdb_op::Write;
+pub use omap::OMap;

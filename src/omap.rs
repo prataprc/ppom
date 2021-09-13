@@ -17,7 +17,7 @@ use crate::{Error, Result};
 /// Refer package level documentation for brief description.
 ///
 /// [llrb]: https://en.wikipedia.org/wiki/Left-leaning_red-black_tree
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct OMap<K, V> {
     root: Option<Box<Node<K, V>>>,
     n_count: usize, // number of entries in the tree.

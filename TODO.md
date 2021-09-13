@@ -5,3 +5,5 @@
   reverse() method
 * Mark Mdb and associted types/traits as deprecated, we are planning to
   use rdms::mdb
+* Add perf numbers for OMap, rc::OMap, arc::OMap to README.md
+* Deprecate Mdb
