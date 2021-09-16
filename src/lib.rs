@@ -18,7 +18,7 @@
 //!   shared-ownership, but not thread-safe.
 //! * [arc::OMap] implement *fully persistent* ordered-map that allows
 //!   shared-ownership and thread-safe.
-//! * [Mdb] implements *partially persistent* ordered-map most useful for
+//! * [mdb::OMap] implements *partially persistent* ordered-map most useful for
 //!   database applications.
 //!
 //! All the above types use [Left-Leaning-Red-Black][wiki-llrb] tree underneath.
@@ -153,6 +153,7 @@ pub enum Error {
     KeyNotFound(String, String),
     InvalidCAS(String, String),
     Invalid(String, String),
+    FailConvert(String, String),
 }
 
 impl fmt::Display for Error {
@@ -164,6 +165,7 @@ impl fmt::Display for Error {
             KeyNotFound(p, msg) => write!(f, "{} KeyNotFound: {}", p, msg),
             InvalidCAS(p, msg) => write!(f, "{} InvalidCAS: {}", p, msg),
             Invalid(p, msg) => write!(f, "{} Invalid: {}", p, msg),
+            FailConvert(p, msg) => write!(f, "{} FailConvert: {}", p, msg),
         }
     }
 }
@@ -180,12 +182,10 @@ impl error::Error for Error {}
 pub type Result<T> = result::Result<T, Error>;
 
 pub mod arc;
-mod mdb;
+pub mod mdb;
 mod mdb_node;
-mod mdb_op;
 mod omap;
 pub mod rc;
+mod spinlock;
 
-pub use mdb::Mdb;
-pub use mdb_op::Write;
 pub use omap::OMap;

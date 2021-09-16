@@ -1,57 +1,23 @@
 use std::sync::Arc;
 
-use mkit::{data::Diff, db};
-
 // Node corresponds to a single entry in Mdb instance.
 #[derive(Clone)]
-pub struct Node<K, V, D> {
-    pub entry: Arc<db::Entry<K, V, D>>,
-    pub black: bool,                       // store: black or red
-    pub left: Option<Arc<Node<K, V, D>>>,  // store: left child
-    pub right: Option<Arc<Node<K, V, D>>>, // store: right child
+pub struct Node<K, V> {
+    pub key: K,
+    pub entry: Arc<Entry<V>>,
+    pub black: bool,                    // store: black or red
+    pub left: Option<Arc<Node<K, V>>>,  // store: left child
+    pub right: Option<Arc<Node<K, V>>>, // store: right child
 }
 
-impl<K, V, D> Node<K, V, D> {
+impl<K, V> Node<K, V> {
     pub fn set(&mut self, value: V, seqno: u64)
     where
         K: Clone,
         V: Clone,
-        D: Clone,
     {
         let mut entry = self.entry.as_ref().clone();
-        entry.value.set(value, seqno);
-        self.entry = Arc::new(entry);
-    }
-
-    pub fn insert(&mut self, value: V, seqno: u64)
-    where
-        K: Clone,
-        V: Clone + Diff<Delta = D>,
-        D: Clone,
-    {
-        let mut entry = self.entry.as_ref().clone();
-        entry.insert(value, seqno);
-        self.entry = Arc::new(entry);
-    }
-
-    pub fn commit(&mut self, other: db::Entry<K, V, D>)
-    where
-        K: PartialEq + Clone,
-        V: Clone + Diff<Delta = D>,
-        D: Clone + From<V>,
-    {
-        self.entry = Arc::new(self.entry.as_ref().merge(&other));
-    }
-
-    pub fn delete(&mut self, seqno: u64)
-    where
-        K: Clone,
-        V: Clone + Diff<Delta = D>,
-        <V as Diff>::Delta: From<V>,
-        D: Clone,
-    {
-        let mut entry = self.entry.as_ref().clone();
-        entry.delete(seqno);
+        entry.set(value, seqno);
         self.entry = Arc::new(entry);
     }
 
@@ -71,14 +37,14 @@ impl<K, V, D> Node<K, V, D> {
     }
 }
 
-impl<K, V, D> Node<K, V, D> {
+impl<K, V> Node<K, V> {
     #[inline]
-    pub fn as_left_ref(&self) -> Option<&Node<K, V, D>> {
+    pub fn as_left_ref(&self) -> Option<&Node<K, V>> {
         self.left.as_deref()
     }
 
     #[inline]
-    pub fn as_right_ref(&self) -> Option<&Node<K, V, D>> {
+    pub fn as_right_ref(&self) -> Option<&Node<K, V>> {
         self.right.as_deref()
     }
 
@@ -87,27 +53,58 @@ impl<K, V, D> Node<K, V, D> {
         self.black
     }
 
+    #[inline]
     pub fn as_key(&self) -> &K {
-        self.entry.as_key()
+        &self.key
     }
 
+    #[inline]
     pub fn to_seqno(&self) -> u64 {
         self.entry.to_seqno()
     }
-
-    pub fn is_deleted(&self) -> bool {
-        self.entry.is_deleted()
-    }
 }
 
-impl<K, V, D> From<db::Entry<K, V, D>> for Node<K, V, D> {
-    fn from(entry: db::Entry<K, V, D>) -> Node<K, V, D> {
+impl<K, V> From<(K, Entry<V>)> for Node<K, V> {
+    fn from((key, entry): (K, Entry<V>)) -> Node<K, V> {
         Node {
+            key,
             entry: Arc::new(entry),
             black: false,
             left: None,
             right: None,
         }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Entry<V> {
+    value: V,
+    seqno: u64,
+}
+
+impl<V> Entry<V> {
+    pub fn new(value: V, seqno: u64) -> Self {
+        Entry { value, seqno }
+    }
+
+    pub fn to_seqno(&self) -> u64 {
+        self.seqno
+    }
+
+    pub fn to_value(&self) -> V
+    where
+        V: Clone,
+    {
+        self.value.clone()
+    }
+
+    pub fn into_value(self) -> V {
+        self.value
+    }
+
+    fn set(&mut self, value: V, seqno: u64) {
+        self.value = value;
+        self.seqno = seqno;
     }
 }
 
