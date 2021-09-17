@@ -4,7 +4,7 @@ use structopt::StructOpt;
 
 use std::{ops::Bound, thread, time};
 
-use ppom::{arc::OMap as OMapArc, rc::OMap as OMapRc, OMap};
+use ppom::{arc::OMap as OMapArc, mdb::OMap as OMapMdb, rc::OMap as OMapRc, OMap};
 
 /// Command line options.
 #[derive(Clone, StructOpt)]
@@ -20,6 +20,9 @@ pub struct Opt {
 
     #[structopt(long = "arc-omap")]
     arc_omap: bool,
+
+    #[structopt(long = "mdb-omap")]
+    mdb_omap: bool,
 
     #[structopt(long = "loads", default_value = "1000000")] // default 1M
     loads: usize,
@@ -50,6 +53,8 @@ fn main() {
         perf_omap_rc(opts, seed);
     } else if opts.arc_omap {
         perf_omap_arc(opts, seed);
+    } else if opts.mdb_omap {
+        perf_omap_mdb(opts, seed);
     } else {
         println!("supply --omap or --rc-omap or --arc-omap");
     }
@@ -281,6 +286,97 @@ fn incr_omap_arc(j: usize, seed: u128, opts: Opt, mut index: OMapArc<u64, u64>) 
     let (elapsed, n) = {
         let start = time::Instant::now();
         let n: usize = index.reverse(..).map(|_| 1_usize).sum();
+        assert!(n == index.len(), "{} != {}", n, index.len());
+        (start.elapsed(), n)
+    };
+    println!(
+        "reverse-{} for reverse iterating {} items, took {:?}",
+        j, n, elapsed
+    );
+}
+
+fn perf_omap_mdb(opts: Opt, seed: u128) {
+    let mut rng = SmallRng::from_seed(seed.to_le_bytes());
+
+    let index: OMapMdb<u64, u64> = OMapMdb::new();
+
+    // initial load
+    let start = time::Instant::now();
+    for _i in 0..opts.loads {
+        let (key, val): (u64, u64) = (rng.gen(), rng.gen());
+        index.set(key, val).unwrap();
+    }
+
+    println!("loaded {} items in {:?}", opts.loads, start.elapsed());
+
+    let mut handles = vec![];
+    for j in 0..opts.writers {
+        let (mut opts, index) = (opts.clone(), index.clone());
+        opts.gets = 0;
+        let seed = seed + ((j as u128) * 100);
+        let h = thread::spawn(move || incr_omap_mdb(j, seed, opts, index));
+        handles.push(h);
+    }
+    for j in opts.writers..(opts.writers + opts.readers) {
+        let (mut opts, index) = (opts.clone(), index.clone());
+        opts.sets = 0;
+        opts.dels = 0;
+        let seed = seed + ((j as u128) * 100);
+        let h = thread::spawn(move || incr_omap_mdb(j, seed, opts, index));
+        handles.push(h);
+    }
+
+    for handle in handles.into_iter() {
+        handle.join().unwrap()
+    }
+}
+
+fn incr_omap_mdb(j: usize, seed: u128, opts: Opt, index: OMapMdb<u64, u64>) {
+    let mut rng = SmallRng::from_seed(seed.to_le_bytes());
+
+    let start = time::Instant::now();
+    let total = opts.sets + opts.dels + opts.gets;
+    let mut n = total;
+    while n > 0 {
+        let op = rng.gen::<usize>() % total;
+
+        let key = rng.gen::<u64>();
+        if op < opts.sets {
+            let val = rng.gen::<u64>();
+            index.set(key, val).unwrap();
+        } else if op < (opts.sets + opts.dels) {
+            index.remove(&key).unwrap();
+        } else {
+            index.get(&key).ok();
+        }
+        n -= 1;
+    }
+    println!(
+        "incremental-{} for {} operations took {:?}",
+        j,
+        total,
+        start.elapsed()
+    );
+
+    let (elapsed, n) = {
+        let start = time::Instant::now();
+        let n: usize = index.iter().unwrap().map(|_| 1_usize).sum();
+        assert!(n == index.len(), "{} != {}", n, index.len());
+        (start.elapsed(), n)
+    };
+    println!("iter-{} for iterating {} items, took {:?}", j, n, elapsed);
+
+    let (elapsed, n) = {
+        let start = time::Instant::now();
+        let n: usize = index.range(..).unwrap().map(|_| 1_usize).sum();
+        assert!(n == index.len(), "{} != {}", n, index.len());
+        (start.elapsed(), n)
+    };
+    println!("range-{} for ranging {} items, took {:?}", j, n, elapsed);
+
+    let (elapsed, n) = {
+        let start = time::Instant::now();
+        let n: usize = index.reverse(..).unwrap().map(|_| 1_usize).sum();
         assert!(n == index.len(), "{} != {}", n, index.len());
         (start.elapsed(), n)
     };
