@@ -35,14 +35,12 @@ macro_rules! compute_n_count {
 /// [LSM mode]: https://en.wikipedia.org/wiki/Log-structured_merge-tree
 #[derive(Clone)]
 pub struct OMap<K, V> {
-    name: String,
-
     mu: Arc<Mutex<u32>>,
     inner: Arc<Spinlock<Arc<Inner<K, V>>>>,
 }
 
 impl<K, V> OMap<K, V> {
-    pub fn new(name: &str) -> OMap<K, V> {
+    pub fn new() -> OMap<K, V> {
         let inner = Inner {
             root: None,
             seqno: 0,
@@ -50,7 +48,6 @@ impl<K, V> OMap<K, V> {
         };
 
         OMap {
-            name: name.to_string(),
             mu: Arc::new(Mutex::new(0)),
             inner: Arc::new(Spinlock::new(Arc::new(inner))),
         }
@@ -91,12 +88,6 @@ impl<K, V> OMap<K, V> {
         *self.inner.write() = Arc::new(inner);
 
         old_seqno
-    }
-
-    /// Identify this index instance.
-    #[inline]
-    pub fn to_name(&self) -> String {
-        self.name.clone()
     }
 }
 
