@@ -22,13 +22,14 @@ name = "perf"
 required-features = ["perf"]
 
 [dependencies]
-arbitrary = { version = "0.4.7", features = ["derive"] }
+arbitrary = { version = "0.4.7", features = ["derive"], optional = true }
 # TODO one all deprecated are purged remove mkit dependency.
 mkit = { path = "../mkit", version = "0.4.0" }
 rand = { version = "0.7.3", features = ["small_rng"] }
 structopt = { version = "0.3.20", default-features = false, optional = true }
 
 [dev-dependencies]
+arbitrary = { version = "0.4.7", features = ["derive"]}
 
 [features]
-perf = ["structopt"]
+perf = ["structopt", "arbitrary"]
