@@ -23,7 +23,7 @@ where
     let mut rng = SmallRng::from_seed(seed.to_le_bytes());
     let skew_remove: u8 = rng.gen::<u8>() % 2;
     println!(
-        "test_omap {} seed:{}, n_ops:{} skew_remove:{}",
+        "test_simple_omap.run_with_key {} seed:{}, n_ops:{} skew_remove:{}",
         prefix, seed, n_ops, skew_remove
     );
 
@@ -37,7 +37,7 @@ where
         let mut uns = Unstructured::new(&bytes);
 
         let op: Op<K, u64> = uns.arbitrary().unwrap();
-        // println!("op -- {:?}", op);
+        // println!("test_simple_omap.run_with_key op -- {:?}", op);
         match op {
             Op::Len => {
                 counts[0] += 1;
@@ -96,8 +96,7 @@ where
             Op::Range((low, high)) if (i % iter_clamp) == 0 => {
                 counts[7] += 1;
                 let r = (Bound::from(low), Bound::from(high));
-                let a: Vec<(K, u64)> = index.range(r).collect();
-                assert_eq!(a.len(), 0, "range {:?}", r);
+                assert_eq!(index.range(r).count(), 0, "range {:?}", r);
             }
             Op::Range((_, _)) => (),
             Op::Reverse((low, high))
@@ -113,8 +112,7 @@ where
             Op::Reverse((low, high)) if (i % iter_clamp) == 0 => {
                 counts[8] += 1;
                 let r = (Bound::from(low), Bound::from(high));
-                let a: Vec<(K, u64)> = index.reverse(r).collect();
-                assert_eq!(a.len(), 0, "reverse {:?}", r);
+                assert_eq!(index.reverse(r).count(), 0, "reverse {:?}", r);
             }
             Op::Reverse((_, _)) => (),
             Op::Extend(items) => {
@@ -129,7 +127,7 @@ where
                         Some(val) => assert_eq!(value, *val, "for key {:?}", key),
                         None => panic!("key missing {:?}", key),
                     },
-                    None => assert!(btmap.len() == 0, "unexpected len: {}", btmap.len()),
+                    None => assert!(btmap.is_empty(), "unexpected len: {}", btmap.len()),
                 }
             }
         }
@@ -140,16 +138,13 @@ where
             0 => (),
             1 => {
                 for _i in 0..skew_remove {
-                    match index.random(&mut rng) {
-                        Some((key, _)) => {
-                            match (index.remove(&key), btmap.remove(&key)) {
-                                (Some(v), Some(r)) => {
-                                    assert_eq!(v, r, "for key {}", key)
-                                }
-                                (v, r) => panic!("unexpected {:?} != {:?}", v, r),
+                    if let Some((key, _)) = index.random(&mut rng) {
+                        match (index.remove(&key), btmap.remove(&key)) {
+                            (Some(v), Some(r)) => {
+                                assert_eq!(v, r, "for key {}", key)
                             }
+                            (v, r) => panic!("unexpected {:?} != {:?}", v, r),
                         }
-                        None => (),
                     }
                 }
             }
@@ -161,7 +156,12 @@ where
     let b: Vec<(K, u64)> = btmap.iter().map(|(k, v)| (*k, *v)).collect();
     assert_eq!(a, b);
 
-    println!("counts {:?} len:{}/{}", counts, index.len(), btmap.len());
+    println!(
+        "test_simple_omap.run_with_key counts {:?} len:{}/{}",
+        counts,
+        index.len(),
+        btmap.len()
+    );
 }
 
 #[derive(Debug, Arbitrary)]

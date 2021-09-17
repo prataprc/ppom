@@ -85,7 +85,7 @@ fn test_spinlock() {
 
     print_w_res(writers.into_iter().map(|w| w.join().unwrap()).collect());
     print_r_res(readers.into_iter().map(|r| r.join().unwrap()).collect());
-    println!("Spinlock {}", spin.to_stats().unwrap());
+    println!("test_spinlock Spinlock {}", spin.to_stats().unwrap());
 }
 
 struct Data {

@@ -127,7 +127,10 @@ impl<T> Spinlock<T> {
             if (old & Self::LATCH_FLAG) == 0 {
                 // latch is not acquired by a writer
                 if (old & Self::LOCK_FLAG) != 0 {
-                    panic!("if latch is flipped-off, lock can't be flipped-on !");
+                    panic!(concat!(
+                        "if latch is flipped-off, lock can't be flipped-on! ",
+                        "call the programmer"
+                    ));
                 }
                 let new = old | Self::LATCH_FLAG;
                 if self
@@ -161,7 +164,10 @@ impl<T> Spinlock<T> {
                     };
                     break WriteGuard { door };
                 }
-                panic!("latch is acquired, ZERO readers, but unable to lock !")
+                panic!(concat!(
+                    "latch is acquired, ZERO readers, but unable to lock! ",
+                    "call the programmer"
+                ));
             }
             if cfg!(feature = "debug") {
                 self.conflicts.fetch_add(1, SeqCst);
@@ -225,7 +231,10 @@ impl<'a, T> Drop for WriteGuard<'a, T> {
     fn drop(&mut self) {
         let old = self.door.latchlock.load(SeqCst);
         if (old & Spinlock::<T>::READERS_FLAG) > 0 {
-            panic!("can't have active readers, when lock is held");
+            panic!(concat!(
+                "can't have active readers, when lock is held! ",
+                "call the programmer"
+            ));
         }
         if self
             .door
@@ -233,7 +242,10 @@ impl<'a, T> Drop for WriteGuard<'a, T> {
             .compare_exchange(old, 0, SeqCst, SeqCst)
             .is_err()
         {
-            panic!("cant' have readers/writers to modify when locked")
+            panic!(concat!(
+                "cant' have readers/writers to modify when locked! ",
+                "call the programmer"
+            ))
         }
     }
 }

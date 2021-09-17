@@ -329,6 +329,33 @@ fn perf_omap_mdb(opts: Opt, seed: u128) {
     for handle in handles.into_iter() {
         handle.join().unwrap()
     }
+
+    let (elapsed, n) = {
+        let start = time::Instant::now();
+        let n: usize = index.iter().unwrap().map(|_| 1_usize).sum();
+        assert!(n == index.len(), "{} != {}", n, index.len());
+        (start.elapsed(), n)
+    };
+    println!("iter for iterating {} items, took {:?}", n, elapsed);
+
+    let (elapsed, n) = {
+        let start = time::Instant::now();
+        let n: usize = index.range(..).unwrap().map(|_| 1_usize).sum();
+        assert!(n == index.len(), "{} != {}", n, index.len());
+        (start.elapsed(), n)
+    };
+    println!("range for ranging {} items, took {:?}", n, elapsed);
+
+    let (elapsed, n) = {
+        let start = time::Instant::now();
+        let n: usize = index.reverse(..).unwrap().map(|_| 1_usize).sum();
+        assert!(n == index.len(), "{} != {}", n, index.len());
+        (start.elapsed(), n)
+    };
+    println!(
+        "reverse for reverse iterating {} items, took {:?}",
+        n, elapsed
+    );
 }
 
 fn incr_omap_mdb(j: usize, seed: u128, opts: Opt, index: OMapMdb<u64, u64>) {
@@ -356,33 +383,6 @@ fn incr_omap_mdb(j: usize, seed: u128, opts: Opt, index: OMapMdb<u64, u64>) {
         j,
         total,
         start.elapsed()
-    );
-
-    let (elapsed, n) = {
-        let start = time::Instant::now();
-        let n: usize = index.iter().unwrap().map(|_| 1_usize).sum();
-        assert!(n == index.len(), "{} != {}", n, index.len());
-        (start.elapsed(), n)
-    };
-    println!("iter-{} for iterating {} items, took {:?}", j, n, elapsed);
-
-    let (elapsed, n) = {
-        let start = time::Instant::now();
-        let n: usize = index.range(..).unwrap().map(|_| 1_usize).sum();
-        assert!(n == index.len(), "{} != {}", n, index.len());
-        (start.elapsed(), n)
-    };
-    println!("range-{} for ranging {} items, took {:?}", j, n, elapsed);
-
-    let (elapsed, n) = {
-        let start = time::Instant::now();
-        let n: usize = index.reverse(..).unwrap().map(|_| 1_usize).sum();
-        assert!(n == index.len(), "{} != {}", n, index.len());
-        (start.elapsed(), n)
-    };
-    println!(
-        "reverse-{} for reverse iterating {} items, took {:?}",
-        j, n, elapsed
     );
 }
 

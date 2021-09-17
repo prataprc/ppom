@@ -29,7 +29,7 @@ fn test_unique_hash() {
 fn test_mdb_omap() {
     let seed: u128 = random();
     // let seed: u128 = 46462177783710469322936477079324309004;
-    let n_load = 100_000; // TODO make it 1_000_000;
+    let n_load = 100_000;
     let n_ops = 100_000;
     let n_threads = 16;
 
@@ -102,15 +102,13 @@ fn test_with_key_type<K>(
         counts[4] += 1;
         let high: Limit<u64> = uns.arbitrary().unwrap();
         let low: Limit<u64> = uns.arbitrary().unwrap();
+        let r = (Bound::from(low.clone()), Bound::from(high.clone()));
         if asc_range(&low, &high) {
-            let r = (Bound::from(low), Bound::from(high));
             let a: Vec<(u64, u64)> = index.range(r).unwrap().collect();
             let b: Vec<(u64, u64)> = btmap.range(r).map(|(k, v)| (*k, *v)).collect();
             assert_eq!(a, b, "range {:?}", r);
         } else {
-            let r = (Bound::from(low), Bound::from(high));
-            let a: Vec<(u64, u64)> = index.range(r).unwrap().collect();
-            assert_eq!(a.len(), 0, "range {:?}", r);
+            assert_eq!(index.range(r).unwrap().count(), 0, "range {:?}", r);
         }
     }
     // test reverse
@@ -121,16 +119,14 @@ fn test_with_key_type<K>(
         counts[5] += 1;
         let high: Limit<u64> = uns.arbitrary().unwrap();
         let low: Limit<u64> = uns.arbitrary().unwrap();
+        let r = (Bound::from(low.clone()), Bound::from(high.clone()));
         if asc_range(&low, &high) {
-            let r = (Bound::from(low), Bound::from(high));
             let a: Vec<(u64, u64)> = index.reverse(r).unwrap().collect();
             let b: Vec<(u64, u64)> =
                 btmap.range(r).rev().map(|(k, v)| (*k, *v)).collect();
             assert_eq!(a, b, "reverse {:?}", r);
         } else {
-            let r = (Bound::from(low), Bound::from(high));
-            let a: Vec<(u64, u64)> = index.reverse(r).unwrap().collect();
-            assert_eq!(a.len(), 0, "reverse {:?}", r);
+            assert_eq!(index.reverse(r).unwrap().count(), 0, "reverse {:?}", r);
         }
     }
     // test validate
@@ -221,7 +217,7 @@ enum Op<K, V> {
     Get(K),
 }
 
-#[derive(Debug, Eq, PartialEq, Arbitrary)]
+#[derive(Clone, Debug, Eq, PartialEq, Arbitrary)]
 enum Limit<T> {
     Unbounded,
     Included(T),

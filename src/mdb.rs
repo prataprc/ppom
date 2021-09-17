@@ -39,6 +39,12 @@ pub struct OMap<K, V> {
     inner: Arc<Spinlock<Arc<Inner<K, V>>>>,
 }
 
+impl<K, V> Default for OMap<K, V> {
+    fn default() -> Self {
+        OMap::new()
+    }
+}
+
 impl<K, V> OMap<K, V> {
     pub fn new() -> OMap<K, V> {
         let inner = Inner {

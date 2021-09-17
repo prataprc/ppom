@@ -21,7 +21,11 @@ fn test_arc_omap() {
         index = index.set(key, val);
     }
 
-    println!("initial load len:{}/{}", index.len(), btmap.len());
+    println!(
+        "test_arc_omap initial load len:{}/{}",
+        index.len(),
+        btmap.len()
+    );
 
     let mut handles = vec![];
     for j in 0..16 {
@@ -58,7 +62,7 @@ fn do_test(
         let mut uns = Unstructured::new(&bytes);
 
         let op: Op<u8, u64> = uns.arbitrary().unwrap();
-        // println!("{}-op -- {:?}", _j, op);
+        // println!("test_arc_omap.do_test {}-op -- {:?}", _j, op);
         match op {
             Op::Len => {
                 counts[0] += 1;
@@ -133,8 +137,7 @@ fn do_test(
             Op::Range((low, high)) => {
                 counts[7] += 1;
                 let r = (Bound::from(low), Bound::from(high));
-                let a: Vec<(u8, u64)> = index.range(r).collect();
-                assert_eq!(a.len(), 0, "range {:?}", r);
+                assert_eq!(index.range(r).count(), 0, "range {:?}", r);
             }
             Op::Reverse((low, high)) if asc_range(&low, &high) => {
                 counts[8] += 1;
@@ -147,8 +150,7 @@ fn do_test(
             Op::Reverse((low, high)) => {
                 counts[8] += 1;
                 let r = (Bound::from(low), Bound::from(high));
-                let a: Vec<(u8, u64)> = index.reverse(r).collect();
-                assert_eq!(a.len(), 0, "reverse {:?}", r);
+                assert_eq!(index.reverse(r).count(), 0, "reverse {:?}", r);
             }
         }
     }
@@ -157,7 +159,12 @@ fn do_test(
     let b: Vec<(u8, u64)> = btmap.iter().map(|(k, v)| (*k, *v)).collect();
     assert_eq!(a, b);
 
-    println!("counts {:?} len:{}/{}", counts, index.len(), btmap.len());
+    println!(
+        "test_arc_omap.do_test counts {:?} len:{}/{}",
+        counts,
+        index.len(),
+        btmap.len()
+    );
 }
 
 #[derive(Debug, Arbitrary)]

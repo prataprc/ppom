@@ -22,7 +22,7 @@ fn test_rc_omap() {
         let mut uns = Unstructured::new(&bytes);
 
         let op: Op<u8, u64> = uns.arbitrary().unwrap();
-        // println!("op -- {:?}", op);
+        // println!("test_rc_omap op -- {:?}", op);
         match op {
             Op::Len => {
                 counts[0] += 1;
@@ -97,8 +97,7 @@ fn test_rc_omap() {
             Op::Range((l, h)) => {
                 counts[7] += 1;
                 let r = (Bound::from(l), Bound::from(h));
-                let arr: Vec<(u8, u64)> = index.range(r).collect();
-                assert_eq!(arr.len(), 0, "range {:?}", r);
+                assert_eq!(index.range(r).count(), 0, "range {:?}", r);
             }
             Op::Reverse((l, h)) if asc_range(&l, &h) => {
                 counts[8] += 1;
@@ -111,8 +110,7 @@ fn test_rc_omap() {
             Op::Reverse((l, h)) => {
                 counts[8] += 1;
                 let r = (Bound::from(l), Bound::from(h));
-                let arr: Vec<(u8, u64)> = index.reverse(r).collect();
-                assert_eq!(arr.len(), 0, "reverse {:?}", r);
+                assert_eq!(index.reverse(r).count(), 0, "reverse {:?}", r);
             }
         }
     }
@@ -121,7 +119,12 @@ fn test_rc_omap() {
     let b: Vec<(u8, u64)> = btmap.iter().map(|(k, v)| (*k, *v)).collect();
     assert_eq!(a, b);
 
-    println!("counts {:?} len:{}/{}", counts, index.len(), btmap.len());
+    println!(
+        "test_rc_omap counts {:?} len:{}/{}",
+        counts,
+        index.len(),
+        btmap.len()
+    );
 }
 
 #[derive(Debug, Arbitrary)]

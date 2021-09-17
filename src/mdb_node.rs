@@ -76,7 +76,7 @@ impl<K, V> From<(K, Entry<V>)> for Node<K, V> {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct Entry<V> {
     value: V,
     seqno: u64,
