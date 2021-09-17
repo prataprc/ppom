@@ -43,7 +43,7 @@ fn test_arc_omap() {
 }
 
 fn do_test(
-    _j: usize,
+    _thread: usize,
     seed: u128,
     n: usize,
     mut index: OMap<u8, u64>,
