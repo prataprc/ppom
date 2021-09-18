@@ -2,6 +2,7 @@
 
 export RUST_BACKTRACE=full
 export RUSTFLAGS=-g
+
 exec > $1
 exec 2>&1
 
