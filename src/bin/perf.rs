@@ -1,5 +1,5 @@
 use arbitrary::Arbitrary;
-use rand::{prelude::random, rngs::SmallRng, Rng, SeedableRng};
+use rand::{prelude::random, rngs::StdRng, Rng, SeedableRng};
 use structopt::StructOpt;
 
 use std::{ops::Bound, thread, time};
@@ -61,7 +61,7 @@ fn main() {
 }
 
 fn perf_omap(opts: Opt, seed: u64) {
-    let mut rng = SmallRng::seed_from_u64(seed);
+    let mut rng = StdRng::seed_from_u64(seed);
 
     let mut index: OMap<u64, u64> = OMap::new();
 
@@ -78,7 +78,7 @@ fn perf_omap(opts: Opt, seed: u64) {
 }
 
 fn incr_omap(j: usize, seed: u64, opts: Opt, mut index: OMap<u64, u64>) {
-    let mut rng = SmallRng::seed_from_u64(seed);
+    let mut rng = StdRng::seed_from_u64(seed);
 
     let start = time::Instant::now();
     let total = opts.sets + opts.dels + opts.gets;
@@ -133,7 +133,7 @@ fn incr_omap(j: usize, seed: u64, opts: Opt, mut index: OMap<u64, u64>) {
 }
 
 fn perf_omap_rc(opts: Opt, seed: u64) {
-    let mut rng = SmallRng::seed_from_u64(seed);
+    let mut rng = StdRng::seed_from_u64(seed);
 
     let mut index: OMapRc<u64, u64> = OMapRc::new();
 
@@ -150,7 +150,7 @@ fn perf_omap_rc(opts: Opt, seed: u64) {
 }
 
 fn incr_omap_rc(j: usize, seed: u64, opts: Opt, mut index: OMapRc<u64, u64>) {
-    let mut rng = SmallRng::seed_from_u64(seed);
+    let mut rng = StdRng::seed_from_u64(seed);
 
     let start = time::Instant::now();
     let total = opts.sets + opts.dels + opts.gets;
@@ -205,7 +205,7 @@ fn incr_omap_rc(j: usize, seed: u64, opts: Opt, mut index: OMapRc<u64, u64>) {
 }
 
 fn perf_omap_arc(opts: Opt, seed: u64) {
-    let mut rng = SmallRng::seed_from_u64(seed);
+    let mut rng = StdRng::seed_from_u64(seed);
 
     let mut index: OMapArc<u64, u64> = OMapArc::new();
 
@@ -241,7 +241,7 @@ fn perf_omap_arc(opts: Opt, seed: u64) {
 }
 
 fn incr_omap_arc(j: usize, seed: u64, opts: Opt, mut index: OMapArc<u64, u64>) {
-    let mut rng = SmallRng::seed_from_u64(seed);
+    let mut rng = StdRng::seed_from_u64(seed);
 
     let start = time::Instant::now();
     let total = opts.sets + opts.dels + opts.gets;
@@ -296,7 +296,7 @@ fn incr_omap_arc(j: usize, seed: u64, opts: Opt, mut index: OMapArc<u64, u64>) {
 }
 
 fn perf_omap_mdb(opts: Opt, seed: u64) {
-    let mut rng = SmallRng::seed_from_u64(seed);
+    let mut rng = StdRng::seed_from_u64(seed);
 
     let index: OMapMdb<u64, u64> = OMapMdb::new();
 
@@ -359,7 +359,7 @@ fn perf_omap_mdb(opts: Opt, seed: u64) {
 }
 
 fn incr_omap_mdb(j: usize, seed: u64, opts: Opt, index: OMapMdb<u64, u64>) {
-    let mut rng = SmallRng::seed_from_u64(seed);
+    let mut rng = StdRng::seed_from_u64(seed);
 
     let start = time::Instant::now();
     let total = opts.sets + opts.dels + opts.gets;

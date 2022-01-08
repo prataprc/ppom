@@ -1,5 +1,3 @@
-use rand::Rng;
-
 use std::{
     borrow::Borrow,
     cmp::{Ord, Ordering},
@@ -280,7 +278,7 @@ impl<K, V> OMap<K, V> {
     where
         K: Clone,
         V: Clone,
-        R: Rng,
+        R: rand::Rng,
     {
         let mut nref = self.root.as_deref()?;
 

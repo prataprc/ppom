@@ -1,5 +1,5 @@
 use arbitrary::{self, unstructured::Unstructured, Arbitrary};
-use rand::{prelude::random, rngs::SmallRng, Rng, SeedableRng};
+use rand::{prelude::random, rngs::StdRng, Rng, SeedableRng};
 
 use super::*;
 
@@ -10,7 +10,7 @@ fn test_arc_omap() {
     let seed: u64 = random();
     // let seed: u64 = 46462177783710469322936477079324309004;
     println!("test_arc_omap {}", seed);
-    let mut rng = SmallRng::seed_from_u64(seed);
+    let mut rng = StdRng::seed_from_u64(seed);
 
     let mut index: OMap<u8, u64> = OMap::new();
     let mut btmap: BTreeMap<u8, u64> = BTreeMap::new();
@@ -53,7 +53,7 @@ fn do_test(
     mut index: OMap<u8, u64>,
     mut btmap: BTreeMap<u8, u64>,
 ) {
-    let mut rng = SmallRng::seed_from_u64(seed);
+    let mut rng = StdRng::seed_from_u64(seed);
 
     let mut counts = [0_usize; 10];
 

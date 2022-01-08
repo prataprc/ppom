@@ -1,5 +1,5 @@
 use arbitrary::{self, unstructured::Unstructured, Arbitrary};
-use rand::{prelude::random, rngs::SmallRng, Rng, SeedableRng};
+use rand::{prelude::random, rngs::StdRng, Rng, SeedableRng};
 
 use super::*;
 
@@ -20,7 +20,7 @@ fn run_with_key<K>(prefix: &str, seed: u64, n_ops: usize, iter_clamp: usize)
 where
     K: Ord + Copy + Clone + PartialEq + std::fmt::Display + std::fmt::Debug + Arbitrary,
 {
-    let mut rng = SmallRng::seed_from_u64(seed);
+    let mut rng = StdRng::seed_from_u64(seed);
     let skew_remove: u8 = rng.gen::<u8>() % 2;
     println!(
         "test_simple_omap.run_with_key {} seed:{}, n_ops:{} skew_remove:{}",

@@ -1,5 +1,5 @@
 use arbitrary::{Arbitrary, Unstructured};
-use rand::{prelude::random, rngs::SmallRng, Rng, SeedableRng};
+use rand::{prelude::random, rngs::StdRng, Rng, SeedableRng};
 
 use std::{
     collections::{hash_map::DefaultHasher, BTreeMap},
@@ -48,7 +48,7 @@ fn test_with_key_type<K>(
     K: Copy + fmt::Debug + Hash + Arbitrary,
 {
     println!("test_with_key_type-{} seed:{}", prefix, seed);
-    let mut rng = SmallRng::seed_from_u64(seed);
+    let mut rng = StdRng::seed_from_u64(seed);
 
     let index: OMap<u64, u64> = OMap::new();
     let mut btmap: BTreeMap<u64, u64> = BTreeMap::new();
@@ -153,7 +153,7 @@ fn do_test<K>(
 where
     K: Copy + fmt::Debug + Hash + Arbitrary,
 {
-    let mut rng = SmallRng::seed_from_u64(seed);
+    let mut rng = StdRng::seed_from_u64(seed);
     let mut counts = [0_usize; 7];
 
     for _i in 0..n_ops {
