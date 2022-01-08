@@ -7,10 +7,10 @@ use std::{collections::BTreeMap, ops::Bound, thread};
 
 #[test]
 fn test_arc_omap() {
-    let seed: u128 = random();
-    // let seed: u128 = 46462177783710469322936477079324309004;
+    let seed: u64 = random();
+    // let seed: u64 = 46462177783710469322936477079324309004;
     println!("test_arc_omap {}", seed);
-    let mut rng = SmallRng::from_seed(seed.to_le_bytes());
+    let mut rng = SmallRng::seed_from_u64(seed);
 
     let mut index: OMap<u8, u64> = OMap::new();
     let mut btmap: BTreeMap<u8, u64> = BTreeMap::new();
@@ -30,7 +30,7 @@ fn test_arc_omap() {
     let mut handles = vec![];
     for j in 0..16 {
         let (a, b) = (index.clone(), btmap.clone());
-        let h = thread::spawn(move || do_test(j, seed + (j as u128), 1_000_000, a, b));
+        let h = thread::spawn(move || do_test(j, seed + (j as u64), 1_000_000, a, b));
         handles.push(h);
     }
 
@@ -48,12 +48,12 @@ fn test_arc_omap() {
 
 fn do_test(
     _thread: usize,
-    seed: u128,
+    seed: u64,
     n: usize,
     mut index: OMap<u8, u64>,
     mut btmap: BTreeMap<u8, u64>,
 ) {
-    let mut rng = SmallRng::from_seed(seed.to_le_bytes());
+    let mut rng = SmallRng::seed_from_u64(seed);
 
     let mut counts = [0_usize; 10];
 

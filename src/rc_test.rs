@@ -7,10 +7,10 @@ use std::{collections::BTreeMap, ops::Bound};
 
 #[test]
 fn test_rc_omap() {
-    let seed: u128 = random();
-    // let seed: u128 = 46462177783710469322936477079324309004;
+    let seed: u64 = random();
+    // let seed: u64 = 46462177783710469322936477079324309004;
     println!("test_rc_omap {}", seed);
-    let mut rng = SmallRng::from_seed(seed.to_le_bytes());
+    let mut rng = SmallRng::seed_from_u64(seed);
 
     let mut index: OMap<u8, u64> = OMap::new();
     let mut btmap: BTreeMap<u8, u64> = BTreeMap::new();

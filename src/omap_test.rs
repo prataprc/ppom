@@ -8,19 +8,19 @@ use std::collections::BTreeMap;
 #[test]
 fn test_simple_omap() {
     let n_ops = 1_000_000;
-    let seed: u128 = random();
-    // let seed: u128 = 194689585675773936160943145888738646518;
+    let seed: u64 = random();
+    // let seed: u64 = 194689585675773936160943145888738646518;
 
     run_with_key::<u8>("u8-key", seed, n_ops, 2);
     run_with_key::<u16>("16-key", seed, n_ops, 5000);
     run_with_key::<u32>("32-key", seed, n_ops, 5000);
 }
 
-fn run_with_key<K>(prefix: &str, seed: u128, n_ops: usize, iter_clamp: usize)
+fn run_with_key<K>(prefix: &str, seed: u64, n_ops: usize, iter_clamp: usize)
 where
     K: Ord + Copy + Clone + PartialEq + std::fmt::Display + std::fmt::Debug + Arbitrary,
 {
-    let mut rng = SmallRng::from_seed(seed.to_le_bytes());
+    let mut rng = SmallRng::seed_from_u64(seed);
     let skew_remove: u8 = rng.gen::<u8>() % 2;
     println!(
         "test_simple_omap.run_with_key {} seed:{}, n_ops:{} skew_remove:{}",

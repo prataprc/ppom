@@ -10,7 +10,7 @@ use ppom::{arc::OMap as OMapArc, mdb::OMap as OMapMdb, rc::OMap as OMapRc, OMap}
 #[derive(Clone, StructOpt)]
 pub struct Opt {
     #[structopt(long = "seed")]
-    seed: Option<u128>,
+    seed: Option<u64>,
 
     #[structopt(long = "omap")]
     omap: bool,
@@ -60,8 +60,8 @@ fn main() {
     }
 }
 
-fn perf_omap(opts: Opt, seed: u128) {
-    let mut rng = SmallRng::from_seed(seed.to_le_bytes());
+fn perf_omap(opts: Opt, seed: u64) {
+    let mut rng = SmallRng::seed_from_u64(seed);
 
     let mut index: OMap<u64, u64> = OMap::new();
 
@@ -77,8 +77,8 @@ fn perf_omap(opts: Opt, seed: u128) {
     incr_omap(0, seed, opts, index);
 }
 
-fn incr_omap(j: usize, seed: u128, opts: Opt, mut index: OMap<u64, u64>) {
-    let mut rng = SmallRng::from_seed(seed.to_le_bytes());
+fn incr_omap(j: usize, seed: u64, opts: Opt, mut index: OMap<u64, u64>) {
+    let mut rng = SmallRng::seed_from_u64(seed);
 
     let start = time::Instant::now();
     let total = opts.sets + opts.dels + opts.gets;
@@ -132,8 +132,8 @@ fn incr_omap(j: usize, seed: u128, opts: Opt, mut index: OMap<u64, u64>) {
     );
 }
 
-fn perf_omap_rc(opts: Opt, seed: u128) {
-    let mut rng = SmallRng::from_seed(seed.to_le_bytes());
+fn perf_omap_rc(opts: Opt, seed: u64) {
+    let mut rng = SmallRng::seed_from_u64(seed);
 
     let mut index: OMapRc<u64, u64> = OMapRc::new();
 
@@ -149,8 +149,8 @@ fn perf_omap_rc(opts: Opt, seed: u128) {
     incr_omap_rc(0, seed, opts, index);
 }
 
-fn incr_omap_rc(j: usize, seed: u128, opts: Opt, mut index: OMapRc<u64, u64>) {
-    let mut rng = SmallRng::from_seed(seed.to_le_bytes());
+fn incr_omap_rc(j: usize, seed: u64, opts: Opt, mut index: OMapRc<u64, u64>) {
+    let mut rng = SmallRng::seed_from_u64(seed);
 
     let start = time::Instant::now();
     let total = opts.sets + opts.dels + opts.gets;
@@ -204,8 +204,8 @@ fn incr_omap_rc(j: usize, seed: u128, opts: Opt, mut index: OMapRc<u64, u64>) {
     );
 }
 
-fn perf_omap_arc(opts: Opt, seed: u128) {
-    let mut rng = SmallRng::from_seed(seed.to_le_bytes());
+fn perf_omap_arc(opts: Opt, seed: u64) {
+    let mut rng = SmallRng::seed_from_u64(seed);
 
     let mut index: OMapArc<u64, u64> = OMapArc::new();
 
@@ -222,7 +222,7 @@ fn perf_omap_arc(opts: Opt, seed: u128) {
     for j in 0..opts.writers {
         let (mut opts, index) = (opts.clone(), index.clone());
         opts.gets = 0;
-        let seed = seed + ((j as u128) * 100);
+        let seed = seed + ((j as u64) * 100);
         let h = thread::spawn(move || incr_omap_arc(j, seed, opts, index));
         handles.push(h);
     }
@@ -230,7 +230,7 @@ fn perf_omap_arc(opts: Opt, seed: u128) {
         let (mut opts, index) = (opts.clone(), index.clone());
         opts.sets = 0;
         opts.dels = 0;
-        let seed = seed + ((j as u128) * 100);
+        let seed = seed + ((j as u64) * 100);
         let h = thread::spawn(move || incr_omap_arc(j, seed, opts, index));
         handles.push(h);
     }
@@ -240,8 +240,8 @@ fn perf_omap_arc(opts: Opt, seed: u128) {
     }
 }
 
-fn incr_omap_arc(j: usize, seed: u128, opts: Opt, mut index: OMapArc<u64, u64>) {
-    let mut rng = SmallRng::from_seed(seed.to_le_bytes());
+fn incr_omap_arc(j: usize, seed: u64, opts: Opt, mut index: OMapArc<u64, u64>) {
+    let mut rng = SmallRng::seed_from_u64(seed);
 
     let start = time::Instant::now();
     let total = opts.sets + opts.dels + opts.gets;
@@ -295,8 +295,8 @@ fn incr_omap_arc(j: usize, seed: u128, opts: Opt, mut index: OMapArc<u64, u64>) 
     );
 }
 
-fn perf_omap_mdb(opts: Opt, seed: u128) {
-    let mut rng = SmallRng::from_seed(seed.to_le_bytes());
+fn perf_omap_mdb(opts: Opt, seed: u64) {
+    let mut rng = SmallRng::seed_from_u64(seed);
 
     let index: OMapMdb<u64, u64> = OMapMdb::new();
 
@@ -313,7 +313,7 @@ fn perf_omap_mdb(opts: Opt, seed: u128) {
     for j in 0..opts.writers {
         let (mut opts, index) = (opts.clone(), index.clone());
         opts.gets = 0;
-        let seed = seed + ((j as u128) * 100);
+        let seed = seed + ((j as u64) * 100);
         let h = thread::spawn(move || incr_omap_mdb(j, seed, opts, index));
         handles.push(h);
     }
@@ -321,7 +321,7 @@ fn perf_omap_mdb(opts: Opt, seed: u128) {
         let (mut opts, index) = (opts.clone(), index.clone());
         opts.sets = 0;
         opts.dels = 0;
-        let seed = seed + ((j as u128) * 100);
+        let seed = seed + ((j as u64) * 100);
         let h = thread::spawn(move || incr_omap_mdb(j, seed, opts, index));
         handles.push(h);
     }
@@ -358,8 +358,8 @@ fn perf_omap_mdb(opts: Opt, seed: u128) {
     );
 }
 
-fn incr_omap_mdb(j: usize, seed: u128, opts: Opt, index: OMapMdb<u64, u64>) {
-    let mut rng = SmallRng::from_seed(seed.to_le_bytes());
+fn incr_omap_mdb(j: usize, seed: u64, opts: Opt, index: OMapMdb<u64, u64>) {
+    let mut rng = SmallRng::seed_from_u64(seed);
 
     let start = time::Instant::now();
     let total = opts.sets + opts.dels + opts.gets;

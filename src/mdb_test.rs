@@ -27,8 +27,8 @@ fn test_unique_hash() {
 
 #[test]
 fn test_mdb_omap() {
-    let seed: u128 = random();
-    // let seed: u128 = 46462177783710469322936477079324309004;
+    let seed: u64 = random();
+    // let seed: u64 = 46462177783710469322936477079324309004;
     let n_load = 100_000;
     let n_ops = 100_000;
     let n_threads = 16;
@@ -40,7 +40,7 @@ fn test_mdb_omap() {
 
 fn test_with_key_type<K>(
     prefix: String,
-    seed: u128,
+    seed: u64,
     n_load: usize,
     n_ops: usize,
     n_threads: usize,
@@ -48,7 +48,7 @@ fn test_with_key_type<K>(
     K: Copy + fmt::Debug + Hash + Arbitrary,
 {
     println!("test_with_key_type-{} seed:{}", prefix, seed);
-    let mut rng = SmallRng::from_seed(seed.to_le_bytes());
+    let mut rng = SmallRng::seed_from_u64(seed);
 
     let index: OMap<u64, u64> = OMap::new();
     let mut btmap: BTreeMap<u64, u64> = BTreeMap::new();
@@ -71,7 +71,7 @@ fn test_with_key_type<K>(
         let (a, b) = (index.clone(), btmap.clone());
         let prefix = prefix.clone();
         let h = thread::spawn(move || {
-            do_test::<K>(prefix, seed + (j as u128), n_threads, j, n_ops, a, b)
+            do_test::<K>(prefix, seed + (j as u64), n_threads, j, n_ops, a, b)
         });
         handles.push(h);
     }
@@ -143,7 +143,7 @@ fn test_with_key_type<K>(
 
 fn do_test<K>(
     prefix: String,
-    seed: u128,
+    seed: u64,
     concur: usize,
     thread: usize,
     n_ops: usize,
@@ -153,7 +153,7 @@ fn do_test<K>(
 where
     K: Copy + fmt::Debug + Hash + Arbitrary,
 {
-    let mut rng = SmallRng::from_seed(seed.to_le_bytes());
+    let mut rng = SmallRng::seed_from_u64(seed);
     let mut counts = [0_usize; 7];
 
     for _i in 0..n_ops {
