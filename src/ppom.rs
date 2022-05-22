@@ -1,9 +1,6 @@
-use std::{
-    borrow::Borrow,
-    cmp::{Ord, Ordering},
-    fmt, marker,
-    ops::{Bound, RangeBounds},
-};
+use std::cmp::{Ord, Ordering};
+use std::ops::{Bound, RangeBounds};
+use std::{borrow::Borrow, fmt, marker};
 
 use super::*;
 use crate::{Error, Result};
@@ -274,6 +271,7 @@ impl<K, V> OMap<K, V> {
     }
 
     /// Return a random entry from this index.
+    #[cfg(any(feature = "rand", test))]
     pub fn random<R>(&self, rng: &mut R) -> Option<(K, V)>
     where
         K: Clone,

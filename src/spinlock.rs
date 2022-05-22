@@ -43,12 +43,9 @@ use log::debug;
 
 #[cfg(test)]
 use std::convert::TryFrom;
-use std::{
-    fmt,
-    ops::{Deref, DerefMut},
-    result,
-    sync::atomic::{AtomicU32, Ordering::SeqCst},
-};
+use std::ops::{Deref, DerefMut};
+use std::sync::atomic::{AtomicU32, Ordering::SeqCst};
+use std::{fmt, result};
 
 #[cfg(test)]
 use crate::{Error, Result};

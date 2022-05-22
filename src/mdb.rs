@@ -1,18 +1,12 @@
 //! Module implement partially-persistent ordered-map, slower but concurrent.
 
-use std::{
-    borrow::Borrow,
-    cmp::{self, Ordering},
-    fmt, marker,
-    ops::{Bound, RangeBounds},
-    sync::{Arc, Mutex},
-};
+use std::cmp::{self, Ordering};
+use std::ops::{Bound, RangeBounds};
+use std::sync::{Arc, Mutex};
+use std::{borrow::Borrow, fmt, marker};
 
-use crate::{
-    mdb_node::{Entry, Node},
-    spinlock::Spinlock,
-    Error, Result,
-};
+use crate::mdb_node::{Entry, Node};
+use crate::{spinlock::Spinlock, Error, Result};
 
 pub const MAX_TREE_DEPTH: usize = 100;
 

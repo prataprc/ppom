@@ -2,22 +2,22 @@
 
 build:
 	# ... build ...
-	# TODO: cargo +stable build
+	cargo +stable build
 	cargo +nightly build
 	#
 	# ... test ...
-	# TODO: cargo +stable test --no-run
+	cargo +stable test --no-run
 	cargo +nightly test --no-run
 	#
 	# ... bench ...
 	cargo +nightly bench --no-run
 	#
 	# ... doc ...
-	# TODO: cargo +stable doc
+	cargo +stable doc
 	cargo +nightly doc
 	#
 	# ... bins ...
-	# cargo +stable build --release --bin perf --features=perf
+	cargo +stable build --release --bin perf --features=perf
 	cargo +nightly build --release --bin perf --features=perf
 	#
 	# ... meta commands ...
@@ -25,12 +25,12 @@ build:
 
 test:
 	# ... test ...
-	# TODO: cargo +stable test
+	cargo +stable test
 	cargo +nightly test
 
 bench:
 	# ... bench ...
-	# TODO: cargo +stable bench
+	cargo +stable bench
 	cargo +nightly bench
 
 flamegraph:
@@ -42,4 +42,4 @@ prepare: build test bench
 
 clean:
 	cargo clean
-	rm -f check.out perf.out flamegraph.svg perf.data perf.data.old
+	rm -f check.out perf.out flamegraph.svg perf.data perf.data.old core

@@ -1,13 +1,9 @@
 use arbitrary::{Arbitrary, Unstructured};
 use rand::{prelude::random, rngs::StdRng, Rng, SeedableRng};
 
-use std::{
-    collections::{hash_map::DefaultHasher, BTreeMap},
-    convert::TryFrom,
-    hash::{Hash, Hasher},
-    ops::Bound,
-    thread,
-};
+use std::collections::{hash_map::DefaultHasher, BTreeMap};
+use std::hash::{Hash, Hasher};
+use std::{convert::TryFrom, ops::Bound, thread};
 
 use super::*;
 

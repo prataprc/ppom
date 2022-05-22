@@ -23,8 +23,7 @@
 //!
 //! All the above types use [Left-Leaning-Red-Black][wiki-llrb] tree underneath.
 //!
-//! Ephemeral ordered-map
-//! ---------------------
+//! ### Ephemeral ordered-map
 //!
 //! - Each entry in OMap instance correspond to a {Key, Value} pair.
 //! - Parametrised over `key-type` and `value-type`.
@@ -36,16 +35,14 @@
 //! - No Durability guarantee.
 //! - Not thread safe.
 //!
-//! Ownership and Cloning
-//! ---------------------
+//! ### Ownership and Cloning
 //!
 //! Cloning `arc::OMap` and `rc::OMap` is cheap, it creates a shared ownership
 //! of the underlying tree. This is great for applications requiring
 //! shared-ownership, but at the cost of copy-on-write for every mutation, like
 //! set and remove operations.
 //!
-//! Thread Safety
-//! -------------
+//! ### Thread Safety
 //!
 //! `arc::OMap` is thread safe through `Arc`. To trade-off thread-safety for
 //! performance use `rc::OMap` type, which is same as `arc::OMap` type except
@@ -54,6 +51,11 @@
 //! while it is available for `arc::OMap` type.
 //!
 //! Constructing a new [OMap] instance and CRUD operations:
+//!
+//! ### Features
+//!
+//! * feature `rand` adds `random()` method to [OMap], [rc::OMap] and [arc::OMap]
+//!   data structures.
 //!
 //! ```
 //! use ppom::OMap;

@@ -1,11 +1,6 @@
-use rand::Rng;
-
-use std::{
-    borrow::Borrow,
-    cmp::{Ord, Ordering},
-    fmt, marker,
-    ops::{Bound, DerefMut, RangeBounds},
-};
+use std::cmp::{Ord, Ordering};
+use std::ops::{Bound, DerefMut, RangeBounds};
+use std::{borrow::Borrow, fmt, marker};
 
 use crate::{Error, Result};
 
@@ -282,11 +277,12 @@ impl<K, V> OMap<K, V> {
     }
 
     /// Return a random entry from this index.
+    #[cfg(any(feature = "rand", test))]
     pub fn random<R>(&self, rng: &mut R) -> Option<(K, V)>
     where
         K: Clone,
         V: Clone,
-        R: Rng,
+        R: rand::Rng,
     {
         let mut nref = self.root.as_deref()?;
 

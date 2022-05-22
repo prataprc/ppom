@@ -22,12 +22,13 @@ name = "perf"
 required-features = ["perf"]
 
 [dependencies]
+rand = { version = "0.8.4", features = ["std_rng"], optional = true }
 arbitrary = { version = "0.4.7", features = ["derive"], optional = true }
-rand = { version = "0.8.4", features = ["std_rng"] }
 structopt = { version = "0.3.20", default-features = false, optional = true }
 
 [dev-dependencies]
 arbitrary = { version = "0.4.7", features = ["derive"]}
+rand = { version = "0.8.4", features = ["std_rng"] }
 
 [features]
-perf = ["structopt", "arbitrary"]
+perf = ["structopt", "arbitrary", "rand"]
